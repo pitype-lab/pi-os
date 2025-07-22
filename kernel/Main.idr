@@ -7,6 +7,7 @@ import Trap
 import Uart
 
 import Data.List
+import Data.Bits
 
 %export "urefc:Main_kinit"
 kinit : IO Nat
@@ -21,6 +22,7 @@ main = do
   pages <- readIORef pagesRef
   println $ show $ length pages
   println $ show $ take 10 pages
+  println "Bye !"
   exit
 
 

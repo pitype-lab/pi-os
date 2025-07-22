@@ -183,14 +183,18 @@ data EntryBits =
   | UserReadExecute
   | UserReadWriteExecute
 
+valid : Bits64
+valid = shiftL 1 0
+
 map : 
-     (root : Vect 3 (Vect 512 Bits64))
+     IORef (List PageBits)
+  -> (root : AnyPtr)
   -> (vaddr : Nat) 
   -> EntryBits
   -> (paddr : Nat)
   -> (bits: Bits64)
-  -> IO (Vect 3 (Vect 512 Bits64))
-map root vaddr entybits paddr bits =
+  -> IO ()
+map pagesRef root vaddr entybits paddr bits =
   let vpn : (Int,Int,Int) = (
           shiftR (cast vaddr) 12 .&. 0x1ff,
           shiftR (cast vaddr) 21 .&. 0x1ff,
@@ -204,7 +208,21 @@ map root vaddr entybits paddr bits =
   in do
     println $ show vpn
     println $ show ppn
-    pure root
+    let v =  (prim__inc_ptr root (cast $ (snd $ snd vpn) * 8) 1)
+    val <- deref {a=Bits64} v
+    (flip traverse_) [1..0] $ \x => do
+      if val /= valid
+        then do
+          println "not valid"
+          page <- zalloc pagesRef 1
+          setPtr v $ cast {to=Bits64} (shiftR (cast {to=Bits64} (cast_AnyPtrNat page)) 2) -- | Valid.val
+          pure ()
+        else pure ()
+   		{-  let entry = ((v.get_entry() & !0x3ff) << 2) as *mut Entry;
+		  v = unsafe { entry.add(vpn[i]).as_mut().unwrap() };
+      -}
+      println $ show x
+    pure ()
 
 virt_to_phys : (root : Vect 512 Bits8) -> (vaddr : Nat) -> Maybe Nat 
 
@@ -212,8 +230,10 @@ export
 testPages : IO ()
 testPages = do
   println "Test pages"
-  let root : Vect 3 (Vect 512 Bits64) = [replicate 512 0, replicate 512 0, replicate 512 0]
-  r1 <- map root 0x10000000 ReadWrite 0x10000000 0
+  let init_pages =  replicate (cast numPages) Empty
+  pagesRef <- newIORef init_pages
+  root <- zalloc pagesRef 1
+  r1 <- map pagesRef root 0x10000000 ReadWrite 0x10000000 0
   pure ()
  {- let init_pages =  replicate (cast numPages) Empty
   pagesRef <- newIORef init_pages
