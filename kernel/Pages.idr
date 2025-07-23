@@ -194,35 +194,37 @@ map :
   -> (paddr : Nat)
   -> (bits: Bits64)
   -> IO ()
-map pagesRef root vaddr entybits paddr bits =
-  let vpn : (Int,Int,Int) = (
+map pagesRef root vaddr entybits paddr bits = do
+    let vpn : (Int,Int,Int) = (
           shiftR (cast vaddr) 12 .&. 0x1ff,
           shiftR (cast vaddr) 21 .&. 0x1ff,
-          shiftR (cast vaddr) 30 .&. 0x1ff
-        )
-      ppn : (Int,Int,Int) = (
+          shiftR (cast vaddr) 30 .&. 0x1ff)
+    let ppn : (Int,Int,Int) = (
           shiftR (cast paddr) 12 .&. 0x1ff,
           shiftR (cast paddr) 21 .&. 0x1ff,
-          shiftR (cast paddr) 30 .&. 0x3ffffff
-        )
-  in do
-    println $ show vpn
-    println $ show ppn
+          shiftR (cast paddr) 30 .&. 0x3ffffff)
     let v =  (prim__inc_ptr root (cast $ (snd $ snd vpn) * 8) 1)
-    val <- deref {a=Bits64} v
-    (flip traverse_) [1..0] $ \x => do
-      if val /= valid
-        then do
-          println "not valid"
-          page <- zalloc pagesRef 1
-          setPtr v $ cast {to=Bits64} (shiftR (cast {to=Bits64} (cast_AnyPtrNat page)) 2) -- | Valid.val
-          pure ()
+    traversePageTable 1 v
+
+    where
+      traversePageTable : (level : Nat) ->  (v : AnyPtr) -> IO ()
+      traversePageTable n v =
+        if n >= 0 && n < 2
+           then do
+               val <- deref {a=Bits64} v
+               if val /= valid
+                then do
+                  println "not valid"
+                  page <- zalloc pagesRef 1
+                  setPtr v $ cast {to=Bits64} (shiftR (cast {to=Bits64} (cast_AnyPtrNat page)) 2) -- | Valid.val
+                else pure ()
+               -- let entry = ((v.get_entry() & !0x3ff) << 2) as *mut Entry;
+		           -- v = unsafe { entry.add(vpn[i]).as_mut().unwrap() };
+               if n == 1
+                  then traversePageTable Z v
+                  else pure ()
+               pure ()
         else pure ()
-   		{-  let entry = ((v.get_entry() & !0x3ff) << 2) as *mut Entry;
-		  v = unsafe { entry.add(vpn[i]).as_mut().unwrap() };
-      -}
-      println $ show x
-    pure ()
 
 virt_to_phys : (root : Vect 512 Bits8) -> (vaddr : Nat) -> Maybe Nat 
 
