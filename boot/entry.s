@@ -18,7 +18,7 @@ _start:
 	# Any hardware threads (hart) that are not bootstrapping
 	# need to wait for an IPI
 	csrr	t0, mhartid
-	#bnez	t0, 3f
+	bnez	t0, 3f
 	# SATP should be zero, but let's make sure
 	csrw	satp, zero
 	
@@ -67,6 +67,9 @@ _start:
 	mret
 
 2:
+	li t0, 0x10000000
+	li t1, 'A'
+	sb t1, 0(t0)
 	# We set the return address (ra above) to this label. When kinit() is finished
 	# in Rust, it will return here.
 
@@ -102,18 +105,24 @@ _start:
 	# 01        : Asynchronous interrupts set pc to BASE + 4 x scause
 	la		t3, asm_trap_vector
 	csrw	stvec, t3
+
 	# kinit() is required to return back the SATP value (including MODE) via a0
 	csrw	satp, a0
+
 	# Force the CPU to take our SATP register.
 	# To be efficient, if the address space identifier (ASID) portion of SATP is already
 	# in cache, it will just grab whatever's in cache. However, that means if we've updated
 	# it in memory, it will be the old table. So, sfence.vma will ensure that the MMU always
 	# grabs a fresh copy of the SATP register and associated tables.
 	sfence.vma
+
 	# sret will put us in supervisor mode and re-enable interrupts
 	sret
+	li t0, 0x10000000
+	li t1, 'B'
+	sb t1, 0(t0)
 3:
-
+	
 	# Parked harts go here. We need to set these
 	# to only awaken if it receives a software interrupt,
 	# which we're going to call the SIPI (Software Intra-Processor Interrupt).
