@@ -12,7 +12,6 @@ all:
 	$(MAKE) -C boot/
 	pack install-deps
 	$(MAKE) -C cBits/
-#	$(CC) $(CFLAGS) build/exec/kernel.c -c -o build/exec/kernel.o
 	IDRIS2_CC=$(CC) IDRIS2_CFLAGS="$(CFLAGS)" pack build pi.ipkg
 	riscv64-unknown-elf-ld -T lds/virt.lds -L$(IDRIS_LIB) -L$(IDRIS_SUPPORT) -L$(shell pack libs-path | tr ':' '\n' | grep '/cptr/') -nostdlib build/exec/kernel.o  $(BOOTOBJS) --whole-archive -lidris2_urefc -lcptr-idris -lidris_support -o kernel.elf
  
