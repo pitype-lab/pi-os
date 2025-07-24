@@ -223,9 +223,9 @@ map pagesRef root vaddr paddr bits = do
     let v =  (prim__inc_ptr root (cast $ (index 2 vpn) * 8) 1)
     leaf <- traversePageTable vpn 0 v
     let entry =
-      index 2 ppn .|.
-      index 1 ppn .|.
-      index 0 ppn .|. (cast {to=Bits64} bits) .|. (cast {to=Bits64} Valid)
+      shiftL (index 2 ppn) 28 .|.
+      shiftL (index 1 ppn) 19 .|.
+      shiftL (index 0 ppn) 10 .|. (cast {to=Bits64} bits) .|. (cast {to=Bits64} Valid)
     setPtr leaf entry
 
     where
