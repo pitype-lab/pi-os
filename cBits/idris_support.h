@@ -19,6 +19,8 @@ extern char* MALLOC_START;
 extern char* HEAP_START;
 extern size_t HEAP_SIZE;
 
+char* idris2_text_start();
+char* idris2_text_end();
 char* idris2_bss_start();
 char* idris2_bss_end();
 char* idris2_kernel_stack_start();

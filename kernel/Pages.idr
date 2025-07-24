@@ -186,21 +186,15 @@ export
 zalloc : IORef (List PageBits) -> Nat -> IO AnyPtr
 zalloc ref size = do
   ptr <- alloc ref size
-  zeroPages ptr size
+  zeroPages ptr $ cast ((cast {to=Double} (size*pageSize))/8)
   pure ptr
 
   where
-    zero : AnyPtr -> Nat -> IO ()
-    zero ptr Z = setPtr ptr $ cast {to=Bits8} 0
-    zero ptr (S n) = do
-      setPtr (prim__inc_ptr heapStart (cast n) 1) $ cast {to=Bits8} 0
-      zero ptr n
-
     zeroPages : AnyPtr -> Nat -> IO ()
-    zeroPages ptr Z = zero ptr pageSize
+    zeroPages ptr Z = setPtr ptr $ cast {to=Bits64} 0
     zeroPages ptr (S n) = do
-      zero ptr pageSize
-      zeroPages ptr n
+       setPtr ptr $ cast {to=Bits64} 0
+       zeroPages (prim__inc_ptr ptr (cast (-1)) 1) n
 
 savePages : IORef (List PageBits) -> IO ()
 savePages ref = do
@@ -304,6 +298,7 @@ map pagesRef root vaddr paddr bits = do
           shiftR (cast paddr) 21 .&. 0x1ff,
           shiftR (cast paddr) 30 .&. 0x3ffffff]
     let v =  (prim__inc_ptr root (cast $ (index 2 vpn) * 8) 1)
+    val <- deref {a=Bits64} v
     leaf <- traversePageTable vpn 1 v
     let entry =
       shiftL (index 2 ppn) 28 .|.
@@ -315,10 +310,9 @@ map pagesRef root vaddr paddr bits = do
       traversePageTable : (vpn : Vect 3 Bits64) -> (level : Fin 3) ->  (v : AnyPtr) -> IO AnyPtr
       traversePageTable vpn n v = do
           val <- deref {a=Bits64} v
-          when (val /= (cast {to=Bits64} Valid)) $ do
+          when ((val .&. (cast {to=Bits64} Valid)) == 0) $ do
             page <- zalloc pagesRef 1
             setPtr v $ cast {to=Bits64} ((shiftR (cast {to=Bits64} (cast_AnyPtrNat page)) 2) .|. (cast {to=Bits64} Valid))
-          
           val <- deref {a=Bits64} v
           let nextTableAddr = shiftL (val .&. complement 0x3ff) 2
           let nextTablePtr = cast_Bits64AnyPtr nextTableAddr
