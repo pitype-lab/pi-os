@@ -30,6 +30,11 @@ export
 cast_AnyPtrNat: AnyPtr -> Nat 
 cast_AnyPtrNat = prim_cast_anyptr_nat
 
+export
+cast_Bits64AnyPtr: Bits64 -> AnyPtr
+cast_Bits64AnyPtr = believe_me
+
+
 %foreign "C:idris2_heap_size"
 prim__idris2_heap_size: AnyPtr 
 
@@ -221,7 +226,7 @@ map pagesRef root vaddr paddr bits = do
           shiftR (cast paddr) 21 .&. 0x1ff,
           shiftR (cast paddr) 30 .&. 0x3ffffff]
     let v =  (prim__inc_ptr root (cast $ (index 2 vpn) * 8) 1)
-    leaf <- traversePageTable vpn 0 v
+    leaf <- traversePageTable vpn 1 v
     let entry =
       shiftL (index 2 ppn) 28 .|.
       shiftL (index 1 ppn) 19 .|.
@@ -230,22 +235,20 @@ map pagesRef root vaddr paddr bits = do
 
     where
       traversePageTable : (vpn : Vect 3 Bits64) -> (level : Fin 3) ->  (v : AnyPtr) -> IO AnyPtr
-      traversePageTable vpn n v =
-        if n >= 0 && n < 2
-           then do
-               val <- deref {a=Bits64} v
-               if val /= (cast {to=Bits64} Valid)
-                then do
-                  page <- zalloc pagesRef 1
-                  let n = cast_AnyPtrNat page
-                  setPtr v $ cast {to=Bits64} ((shiftR (cast {to=Bits64} (cast_AnyPtrNat page)) 2) .|. (cast {to=Bits64} Valid))
-                else pure ()
-               entry <- deref {a=Bits64} v >>= \val => pure $ (val .&. (complement 0x3ff)) `shiftL` 2
-               let v = (prim__inc_ptr v (cast $ (index n vpn) * 8) 1)
-               if n == 1
-                  then traversePageTable vpn 0 v
-                  else pure v
-           else pure v
+      traversePageTable vpn n v = do
+          val <- deref {a=Bits64} v
+          when (val /= (cast {to=Bits64} Valid)) $ do
+            page <- zalloc pagesRef 1
+            setPtr v $ cast {to=Bits64} ((shiftR (cast {to=Bits64} (cast_AnyPtrNat page)) 2) .|. (cast {to=Bits64} Valid))
+          
+          val <- deref {a=Bits64} v
+          let nextTableAddr = shiftL (val .&. complement 0x3ff) 2
+          let nextTablePtr = cast_Bits64AnyPtr nextTableAddr
+          let entryPtr = prim__inc_ptr nextTablePtr (cast $ index n vpn * 8) 1
+
+          if n > 0
+            then traversePageTable vpn (n-1) v
+            else pure v
 
 export
 testPages : IO ()
