@@ -183,50 +183,69 @@ data EntryBits =
   | UserReadExecute
   | UserReadWriteExecute
 
-valid : Bits64
-valid = shiftL 1 0
+implementation Cast EntryBits Bits64 where
+  cast None = 0
+  cast Valid = shiftL 1 0
+  cast Read = shiftL 1 1
+  cast Write = shiftL 1 2
+  cast Execute = shiftL 1 3
+  cast User = shiftL 1 4
+  cast Global = shiftL 1 5
+  cast Access = shiftL 1 6
+  cast Dirty = shiftL 1 7
+
+  -- Convenience combinations
+  cast ReadWrite = (shiftL 1 1) .|. (shiftL 1 2)
+  cast ReadExecute = (shiftL 1 1) .|. (shiftL 1 3)
+  cast ReadWriteExecute = (shiftL 1 1) .|. (shiftL 1 2) .|. (shiftL 1 3) 
+
+  -- Convenience combinations
+  cast UserReadWrite = (shiftL 1 1) .|. (shiftL 1 2) .|. (shiftL 1 4) 
+  cast UserReadExecute = (shiftL 1 1) .|. (shiftL 1 3) .|. (shiftL 1 4) 
+  cast UserReadWriteExecute = (shiftL 1 1) .|. (shiftL 1 2) .|. (shiftL 1 3) .|. (shiftL 1 4) 
 
 map : 
      IORef (List PageBits)
   -> (root : AnyPtr)
   -> (vaddr : Nat) 
-  -> EntryBits
   -> (paddr : Nat)
-  -> (bits: Bits64)
+  -> (bits: EntryBits)
   -> IO ()
-map pagesRef root vaddr entybits paddr bits = do
-    let vpn : (Int,Int,Int) = (
+map pagesRef root vaddr paddr bits = do
+    let vpn : Vect 3 Bits64 = [
           shiftR (cast vaddr) 12 .&. 0x1ff,
           shiftR (cast vaddr) 21 .&. 0x1ff,
-          shiftR (cast vaddr) 30 .&. 0x1ff)
-    let ppn : (Int,Int,Int) = (
+          shiftR (cast vaddr) 30 .&. 0x1ff]
+    let ppn : Vect 3 Bits64 = [
           shiftR (cast paddr) 12 .&. 0x1ff,
           shiftR (cast paddr) 21 .&. 0x1ff,
-          shiftR (cast paddr) 30 .&. 0x3ffffff)
-    let v =  (prim__inc_ptr root (cast $ (snd $ snd vpn) * 8) 1)
-    traversePageTable 1 v
+          shiftR (cast paddr) 30 .&. 0x3ffffff]
+    let v =  (prim__inc_ptr root (cast $ (index 2 vpn) * 8) 1)
+    leaf <- traversePageTable vpn 0 v
+    let entry =
+      index 2 ppn .|.
+      index 1 ppn .|.
+      index 0 ppn .|. (cast {to=Bits64} bits) .|. (cast {to=Bits64} Valid)
+    setPtr leaf entry
 
     where
-      traversePageTable : (level : Nat) ->  (v : AnyPtr) -> IO ()
-      traversePageTable n v =
+      traversePageTable : (vpn : Vect 3 Bits64) -> (level : Fin 3) ->  (v : AnyPtr) -> IO AnyPtr
+      traversePageTable vpn n v =
         if n >= 0 && n < 2
            then do
                val <- deref {a=Bits64} v
-               if val /= valid
+               if val /= (cast {to=Bits64} Valid)
                 then do
-                  println "not valid"
                   page <- zalloc pagesRef 1
-                  setPtr v $ cast {to=Bits64} (shiftR (cast {to=Bits64} (cast_AnyPtrNat page)) 2) -- | Valid.val
+                  let n = cast_AnyPtrNat page
+                  setPtr v $ cast {to=Bits64} ((shiftR (cast {to=Bits64} (cast_AnyPtrNat page)) 2) .|. (cast {to=Bits64} Valid))
                 else pure ()
-               -- let entry = ((v.get_entry() & !0x3ff) << 2) as *mut Entry;
-		           -- v = unsafe { entry.add(vpn[i]).as_mut().unwrap() };
+               entry <- deref {a=Bits64} v >>= \val => pure $ (val .&. (complement 0x3ff)) `shiftL` 2
+               let v = (prim__inc_ptr v (cast $ (index n vpn) * 8) 1)
                if n == 1
-                  then traversePageTable Z v
-                  else pure ()
-               pure ()
-        else pure ()
-
-virt_to_phys : (root : Vect 512 Bits8) -> (vaddr : Nat) -> Maybe Nat 
+                  then traversePageTable vpn 0 v
+                  else pure v
+           else pure v
 
 export
 testPages : IO ()
@@ -235,25 +254,7 @@ testPages = do
   let init_pages =  replicate (cast numPages) Empty
   pagesRef <- newIORef init_pages
   root <- zalloc pagesRef 1
-  r1 <- map pagesRef root 0x10000000 ReadWrite 0x10000000 0
-  pure ()
- {- let init_pages =  replicate (cast numPages) Empty
-  pagesRef <- newIORef init_pages
-  println "Allocate 3 pages and set the first bit to 4"
-  ptr <- alloc pagesRef 3
-  readIORef pagesRef >>= println . show . take 10
-  setPtr ptr $ cast {to=Bits8} 15
-  val <- deref {a=Bits8} ptr
-  println $ show val
-
-  println "Allocate 4 pages and set the first bit to 2"
-  ptr <- zalloc pagesRef 4
-  readIORef pagesRef >>= println . show . take 10
-  setPtr ptr $ cast {to=Bits8} 2
-  val <- deref {a=Bits8} ptr
-  println $ show val
-  savePages pagesRef
-  println "Finish test pages" -}
+  map pagesRef root 0x10000000 0x10000000 ReadWrite
 
 
 
