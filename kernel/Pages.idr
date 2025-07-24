@@ -247,8 +247,8 @@ map pagesRef root vaddr paddr bits = do
           let entryPtr = prim__inc_ptr nextTablePtr (cast $ index n vpn * 8) 1
 
           if n > 0
-            then traversePageTable vpn (n-1) v
-            else pure v
+            then traversePageTable vpn (n-1) entryPtr
+            else pure entryPtr
 
 export
 testPages : IO ()
