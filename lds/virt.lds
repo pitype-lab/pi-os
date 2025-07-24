@@ -45,13 +45,9 @@ SECTIONS
   } >ram AT>ram :bss
   PROVIDE(_memory_start = ORIGIN(ram));
   PROVIDE(_stack_start = _bss_end);
-  PROVIDE(_stack_end = _stack_start + 0x80000);
-  PROVIDE(__malloc_start = _stack_end);
-  PROVIDE(__malloc_end = __malloc_start + 0x80000);
-	/*
-	 * Tiny-malloc modify __malloc_end so we can't use it 
-	 */
-  PROVIDE(_heap_start = __malloc_start + 0x80000);
+  PROVIDE(_stack_end = _stack_start + 0xA00000); 
+  PROVIDE(__malloc_start = _stack_end + 0xA00000);
+  PROVIDE(_heap_start = __malloc_start);
   PROVIDE(_heap_size = _memory_end - _heap_start);
   PROVIDE(_memory_end = ORIGIN(ram) + LENGTH(ram));
 }
