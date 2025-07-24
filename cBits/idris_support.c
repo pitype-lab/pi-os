@@ -13,9 +13,19 @@ Value* idris2_anyptr_nat(void *p) {
 }
 
 // MEMORY OPERATIONS
-
-size_t idris2_heap_size() { return HEAP_SIZE; }
+char* idris2_text_start() { return TEXT_START; }
+char* idris2_text_end() { return TEXT_END; }
+char* idris2_data_start() { return DATA_START; }
+char* idris2_data_end() { return DATA_END; }
+char* idris2_rodata_start() { return RODATA_START; }
+char* idris2_rodata_end() { return RODATA_END; }
+char* idris2_bss_start() { return BSS_START; }
+char* idris2_bss_end() { return BSS_END; }
+char* idris2_kernel_stack_start() { return KERNEL_STACK_START; }
+char* idris2_kernel_stack_end() { return KERNEL_STACK_END; }
+char* idris2_malloc_start() { return MALLOC_START; }
 char* idris2_heap_start() { return HEAP_START; }
+size_t idris2_heap_size() { return HEAP_SIZE; }
 
 // Kernel init
 size_t kinit() {

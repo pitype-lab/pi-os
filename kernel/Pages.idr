@@ -34,20 +34,96 @@ export
 cast_Bits64AnyPtr: Bits64 -> AnyPtr
 cast_Bits64AnyPtr = believe_me
 
+%foreign "C:idris2_text_start"
+prim__idris2_text_start: AnyPtr 
+
+%foreign "C:idris2_text_end"
+prim__idris2_text_end: AnyPtr 
+
+%foreign "C:idris2_data_start"
+prim__idris2_data_start: AnyPtr 
+
+%foreign "C:idris2_data_end"
+prim__idris2_data_end: AnyPtr 
+
+%foreign "C:idris2_rodata_start"
+prim__idris2_rodata_start: AnyPtr 
+
+%foreign "C:idris2_rodata_end"
+prim__idris2_rodata_end: AnyPtr 
+
+%foreign "C:idris2_bss_start"
+prim__idris2_bss_start: AnyPtr 
+
+%foreign "C:idris2_bss_end"
+prim__idris2_bss_end: AnyPtr 
+
+%foreign "C:idris2_kernel_stack_start"
+prim__idris2_kernel_stack_start: AnyPtr
+
+%foreign "C:idris2_kernel_stack_end"
+prim__idris2_kernel_stack_end: AnyPtr 
+
+%foreign "C:idris2_malloc_start"
+prim__idris2_malloc_start: AnyPtr 
+
+%foreign "C:idris2_heap_start"
+prim__idris2_heap_start: AnyPtr
 
 %foreign "C:idris2_heap_size"
 prim__idris2_heap_size: AnyPtr 
 
 export
-heapSize : Nat 
-heapSize = cast_AnyPtrNat prim__idris2_heap_size
+textStart : AnyPtr
+textStart = prim__idris2_text_start
 
-%foreign "C:idris2_heap_start"
-prim__idris2_heap_start: AnyPtr
+export
+textEnd : AnyPtr
+textEnd = prim__idris2_text_end
+
+export
+dataStart : AnyPtr
+dataStart = prim__idris2_data_start
+
+export
+dataEnd : AnyPtr
+dataEnd = prim__idris2_data_end
+
+export
+rodataStart : AnyPtr
+rodataStart = prim__idris2_rodata_start
+
+export
+rodataEnd : AnyPtr
+rodataEnd = prim__idris2_rodata_end
+
+export
+bssStart : AnyPtr
+bssStart = prim__idris2_bss_start
+
+export
+bssEnd : AnyPtr
+bssEnd = prim__idris2_bss_end
+
+export
+kernelStackStart : AnyPtr
+kernelStackStart= prim__idris2_kernel_stack_start
+
+export
+kernelStackEnd : AnyPtr
+kernelStackEnd = prim__idris2_kernel_stack_end
+
+export
+mallocStart : AnyPtr
+mallocStart = prim__idris2_malloc_start
 
 export
 heapStart : AnyPtr
 heapStart = prim__idris2_heap_start
+
+export
+heapSize : Nat 
+heapSize = cast_AnyPtrNat prim__idris2_heap_size
 
 export
 numPages : Nat
@@ -167,6 +243,7 @@ getPages = do
           xs <- read n
           pure (Empty::xs)
 
+public export
 data EntryBits = 
     None 
   | Valid 
@@ -209,6 +286,7 @@ implementation Cast EntryBits Bits64 where
   cast UserReadExecute = (shiftL 1 1) .|. (shiftL 1 3) .|. (shiftL 1 4) 
   cast UserReadWriteExecute = (shiftL 1 1) .|. (shiftL 1 2) .|. (shiftL 1 3) .|. (shiftL 1 4) 
 
+export
 map : 
      IORef (List PageBits)
   -> (root : AnyPtr)
@@ -251,13 +329,25 @@ map pagesRef root vaddr paddr bits = do
             else pure entryPtr
 
 export
-testPages : IO ()
-testPages = do
-  println "Test pages"
-  let init_pages =  replicate (cast numPages) Empty
-  pagesRef <- newIORef init_pages
-  root <- zalloc pagesRef 1
-  map pagesRef root 0x10000000 0x10000000 ReadWrite
+id_map_range : 
+     IORef (List PageBits)
+  -> (root : AnyPtr)
+  -> (start : Nat) 
+  -> (end : Nat)
+  -> (bits: EntryBits)
+  -> IO ()
+id_map_range pagesRef root start end bits = do
+  let memaddr = (cast {to=Bits64} start) .&. (complement ((cast {to=Bits64} pageSize)-1))
+  let alignEnd = ((cast {to=Bits64} end) + ((shiftL 1 12) - 1)) .&. (complement ((shiftL 1 12) - 1)) 
+  let numKbPages = cast {to=Nat} $ (cast {to=Double} $ (cast {to=Bits64} alignEnd) - memaddr) / (cast {to=Double} pageSize)
+  map_addr numKbPages (cast {to=Nat} memaddr)
+
+  where 
+    map_addr : (numKbPages : Nat) -> (memaddr : Nat) -> IO ()
+    map_addr Z _ = pure ()
+    map_addr (S numKbPages) memaddr =
+      map pagesRef root memaddr memaddr bits >> map_addr numKbPages (memaddr + 4096)
+
 
 
 
