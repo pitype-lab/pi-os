@@ -1,4 +1,3 @@
-
 # boot.S
 # bootloader for SoS
 # Stephen Marz
@@ -19,6 +18,7 @@ _start:
 	# Any hardware threads (hart) that are not bootstrapping
 	# need to wait for an IPI
 	csrr	t0, mhartid
+	#bnez	t0, 3f
 	# SATP should be zero, but let's make sure
 	csrw	satp, zero
 	
@@ -52,8 +52,8 @@ _start:
 	csrw	mstatus, t0
 	# Enable FPU: set FS field in mstatus to 0b01 (Initial) or 0b11 (Dirty)
 	csrr	t0, mstatus
-	li		t1, (1 << 13)        # FS = 0b01 (Initial)
-	or		t0, t0, t1
+	li	t1, (1 << 13)        # FS = 0b01 (Initial)
+	or	t0, t0, t1
 	csrw mstatus, t0
 	# Machine's exception program counter (MEPC) is set to `kinit`.
 	la		t1, kinit
