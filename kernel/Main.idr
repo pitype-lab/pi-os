@@ -12,7 +12,7 @@ import Data.Bits
 %export "urefc:Main_kinit"
 kinit : IO Nat
 kinit = do
-  println "Init PI OS"
+  println "Init PI OS memory"
   let init_pages =  replicate (cast numPages) Empty
   pagesRef <- newIORef init_pages
   root <- zalloc pagesRef 1
