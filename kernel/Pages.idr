@@ -297,17 +297,22 @@ map pagesRef root vaddr paddr bits = do
           shiftR (cast paddr) 12 .&. 0x1ff,
           shiftR (cast paddr) 21 .&. 0x1ff,
           shiftR (cast paddr) 30 .&. 0x3ffffff]
+    println $ show vpn
+    println $ show ppn
     let v =  (prim__inc_ptr root (cast $ (index 2 vpn) * 8) 1)
+   -- println $ show $ cast_AnyPtrNat v
     val <- deref {a=Bits64} v
     leaf <- traversePageTable vpn 1 v
-    let entry =
+    println "Leaf"
+    println $ show $ cast_AnyPtrNat leaf
+    let entry : Bits64 =
       shiftL (index 2 ppn) 28 .|.
       shiftL (index 1 ppn) 19 .|.
       shiftL (index 0 ppn) 10 .|. 
       cast bits .|. 
-      cast Valid .|.
-      cast Dirty .|.
-      cast Access
+      cast Valid
+    println "ppn"
+    println $ show entry
     setPtr leaf entry
 
     where
@@ -320,7 +325,9 @@ map pagesRef root vaddr paddr bits = do
           val <- deref {a=Bits64} v
           let nextTableAddr = shiftL (val .&. complement 0x3ff) 2
           let nextTablePtr = cast_Bits64AnyPtr nextTableAddr
+          println $ show $ cast_AnyPtrNat nextTablePtr
           let entryPtr = prim__inc_ptr nextTablePtr (cast $ (index level vpn) * 8) 1
+          println $ show $ cast_AnyPtrNat entryPtr
 
           if level > 0
             then traversePageTable vpn (level-1) entryPtr

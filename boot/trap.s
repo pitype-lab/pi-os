@@ -39,20 +39,57 @@ uart_putchar:
 # This will be our trap vector when we start
 # handling interrupts.
 asm_trap_vector:
-	li t0, 0x10000000
-	li t1, 'E'
-	sb t1, 0(t0)
+    # Print "TRAP!\n"
+    li      a0, 'T'
+    call    uart_putchar
+    li      a0, 'R'
+    call    uart_putchar
+    li      a0, 'A'
+    call    uart_putchar
+    li      a0, 'P'
+    call    uart_putchar
+    li      a0, '!'
+    call    uart_putchar
+    li      a0, 10              # '\n'
+    call    uart_putchar
 
-	csrr a0, scause
-	call uart_print_hex
-	li a0, 10         # '\n'
-	call uart_putchar
+    # Print scause
+    li      a0, 'C'
+    call    uart_putchar
+    li      a0, ':'
+    call    uart_putchar
+    li      a0, ' '
+    call    uart_putchar
+    csrr    a0, scause
+    call    uart_print_hex
+    li      a0, 10
+    call    uart_putchar
 
-	csrr a0, sepc
-	call uart_print_hex
-	li a0, 10         # '\n'
-	call uart_putchar
+    # Print sepc
+    li      a0, 'P'
+    call    uart_putchar
+    li      a0, ':'
+    call    uart_putchar
+    li      a0, ' '
+    call    uart_putchar
+    csrr    a0, sepc
+    call    uart_print_hex
+    li      a0, 10
+    call    uart_putchar
 
-	csrr	a0, mtval
-	wfi
-	j asm_trap_vector
+    # Print stval (e.g., bad virtual address)
+    li      a0, 'V'
+    call    uart_putchar
+    li      a0, ':'
+    call    uart_putchar
+    li      a0, ' '
+    call    uart_putchar
+    csrr    a0, stval
+    call    uart_print_hex
+    li      a0, 10
+    call    uart_putchar
+
+trap_loop:
+    wfi
+    j trap_loop
+

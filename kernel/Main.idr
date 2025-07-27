@@ -19,8 +19,8 @@ kinit = do
   root <- zalloc pagesRef 1
   map pagesRef root (cast_AnyPtrNat root) (cast_AnyPtrNat root) ReadWrite 
   println "Map text section"
-  id_map_range pagesRef root (cast_AnyPtrNat textStart) (cast_AnyPtrNat textEnd) ReadWriteExecute
- -- map pagesRef root 0x8000643a 0x8000643a ReadExecute
+ -- id_map_range pagesRef root (cast_AnyPtrNat textStart) (cast_AnyPtrNat textEnd) ReadWriteExecute
+  map pagesRef root 0x80006a86 0x80006a86 ReadWriteExecute
  {- println "Map data section"
   id_map_range pagesRef root (cast_AnyPtrNat dataStart) (cast_AnyPtrNat dataEnd) ReadExecute
   println "Map rodata section"
@@ -45,9 +45,9 @@ kinit = do
 
   -- Print the bits in the PTE for that entry
   let vpn : Vect 3 Bits64 = [
-    shiftR (0x8000639e) 12 .&. 0x1ff,
-    shiftR (0x8000639e) 21 .&. 0x1ff,
-    shiftR (0x8000639e) 30 .&. 0x1ff
+    shiftR (0x80006a86) 12 .&. 0x1ff,
+    shiftR (0x80006a86) 21 .&. 0x1ff,
+    shiftR (0x80006a86) 30 .&. 0x1ff
   ]
 
   let lvl2 = prim__inc_ptr root (cast (index 2 vpn * 8)) 1
@@ -68,11 +68,11 @@ kinit = do
   val0 <- deref {a=Bits64} lvl0
   println $ "Level 0 entry: " ++ show val0
   
-  phy <- virt_to_phys root 0x8000639e
+  phy <- virt_to_phys root 0x80006a86
   println $ show phy
   println "Finish initialising memory"
   println $ show $ (shiftR (cast {to=Bits64} (cast_AnyPtrNat root)) 12) .|. (shiftL 8 60)
-  pure $ cast $ (shiftR (cast {to=Bits64} (cast_AnyPtrNat root)) 12) .|. (shiftL 8 60)
+  pure $ cast $ (shiftR (cast {to=Bits64} (cast_AnyPtrNat root)) 12) .|. (shiftL 8 60) .|. shiftL 0 44
 
 
 main : IO ()
