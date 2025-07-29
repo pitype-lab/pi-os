@@ -76,7 +76,7 @@ _start:
 	# 1 << 1    : Supervisor's interrupt-enable bit will be set to 1 after sret.
 	# We set the "previous" bits because the sret will write the current bits
 	# with the previous bits.
-	li		t0, (1 << 8) | (1 << 5)
+	li		t0, (1 << 13) | (1 << 8) | (1 << 5)
 	csrw	sstatus, t0
 	la		t1, main
 	csrw	sepc, t1
