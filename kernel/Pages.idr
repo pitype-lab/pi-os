@@ -144,7 +144,8 @@ alloc ref (S size) = do
         pure heapStart
        Just (pages, location) => do
          writeIORef ref pages
-         pure $ prim__inc_ptr heapStart (cast pageSize) (cast location)
+         let align = ((cast {to=Bits64} (cast_AnyPtrNat heapStart)) + ((shiftL 1 12) - 1)) .&. (complement ((shiftL 1 12) - 1))
+         pure $ prim__inc_ptr (cast_Bits64AnyPtr align) (cast pageSize) (cast location)
 
   where
     isFree : List PageBits -> Nat -> Bool
@@ -194,8 +195,9 @@ zalloc ref size = do
     zeroPages ptr Z = setPtr ptr $ cast {to=Bits64} 0
     zeroPages ptr (S n) = do
        setPtr ptr $ cast {to=Bits64} 0
-       zeroPages (prim__inc_ptr ptr (cast (-1)) 1) n
+       zeroPages (prim__inc_ptr ptr (cast 8) 1) n
 
+export
 savePages : IORef (List PageBits) -> IO ()
 savePages ref = do
   pages <- readIORef ref
@@ -300,15 +302,18 @@ map pagesRef root vaddr paddr bits = do
     let v =  (prim__inc_ptr root (cast $ (index 2 vpn) * 8) 1)
     val <- deref {a=Bits64} v
     leaf <- traversePageTable vpn 1 v
-    let entry =
+    let entry : Bits64 =
       shiftL (index 2 ppn) 28 .|.
       shiftL (index 1 ppn) 19 .|.
-      shiftL (index 0 ppn) 10 .|. (cast {to=Bits64} bits) .|. (cast {to=Bits64} Valid)
+      shiftL (index 0 ppn) 10 .|. 
+      cast bits .|. 
+      cast Valid .|.
+      cast Dirty
     setPtr leaf entry
 
     where
       traversePageTable : (vpn : Vect 3 Bits64) -> (level : Fin 3) ->  (v : AnyPtr) -> IO AnyPtr
-      traversePageTable vpn n v = do
+      traversePageTable vpn level v = do
           val <- deref {a=Bits64} v
           when ((val .&. (cast {to=Bits64} Valid)) == 0) $ do
             page <- zalloc pagesRef 1
@@ -316,11 +321,51 @@ map pagesRef root vaddr paddr bits = do
           val <- deref {a=Bits64} v
           let nextTableAddr = shiftL (val .&. complement 0x3ff) 2
           let nextTablePtr = cast_Bits64AnyPtr nextTableAddr
-          let entryPtr = prim__inc_ptr nextTablePtr (cast $ index n vpn * 8) 1
+          let entryPtr = prim__inc_ptr nextTablePtr (cast $ (index level vpn) * 8) 1
 
-          if n > 0
-            then traversePageTable vpn (n-1) entryPtr
+          if level > 0
+            then traversePageTable vpn (level-1) entryPtr
             else pure entryPtr
+
+export
+virt_to_phys : AnyPtr -> (vaddr : Nat) -> IO (Maybe Bits64)
+virt_to_phys root vaddr = do
+  let vpn : Vect 3 Bits64 = [
+        shiftR (cast vaddr) 12 .&. 0x1ff,  -- VPN[0]
+        shiftR (cast vaddr) 21 .&. 0x1ff,  -- VPN[1]
+        shiftR (cast vaddr) 30 .&. 0x1ff   -- VPN[2]
+      ]
+  let pageOffset = cast vaddr .&. 0xfff  -- Lower 12 bits
+
+  -- Level 2 (root level)
+  entryPtr2 <- pure $ prim__inc_ptr root (cast (index 2 vpn * 8)) 1
+  entry2 <- deref {a=Bits64} entryPtr2
+  if entry2 .&. cast Valid == 0 then pure Nothing else do
+    let tableAddr1 = shiftL (entry2 .&. complement 0x3ff) 2
+    let tablePtr1 = cast_Bits64AnyPtr tableAddr1
+
+    -- Level 1
+    entryPtr1 <- pure $ prim__inc_ptr tablePtr1 (cast (index 1 vpn * 8)) 1
+    entry1 <- deref {a=Bits64} entryPtr1
+    if entry1 .&. cast Valid == 0 then pure Nothing else do
+      let tableAddr0 = shiftL (entry1 .&. complement 0x3ff) 2
+      let tablePtr0 = cast_Bits64AnyPtr tableAddr0
+
+      -- Level 0
+      entryPtr0 <- pure $ prim__inc_ptr tablePtr0 (cast (index 0 vpn * 8)) 1
+      entry0 <- deref {a=Bits64} entryPtr0
+      if entry0 .&. cast Valid == 0 then pure Nothing else do
+        -- Check if it's a leaf (has RWX bits set)
+        if (entry0 .&. 0xe) == 0 then pure Nothing else do
+          let ppn0 = (entry0 `shiftR` 10) .&. 0x1ff
+          let ppn1 = (entry0 `shiftR` 19) .&. 0x1ff
+          let ppn2 = (entry0 `shiftR` 28) .&. 0x3ffffff
+          let paddr =
+                shiftL ppn2 30 .|.
+                shiftL ppn1 21 .|.
+                shiftL ppn0 12 .|.
+                pageOffset
+          pure (Just paddr)
 
 export
 id_map_range : 

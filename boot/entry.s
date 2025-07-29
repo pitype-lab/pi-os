@@ -18,7 +18,7 @@ _start:
 	# Any hardware threads (hart) that are not bootstrapping
 	# need to wait for an IPI
 	csrr	t0, mhartid
-	#bnez	t0, 3f
+	bnez	t0, 3f
 	# SATP should be zero, but let's make sure
 	csrw	satp, zero
 	
@@ -80,6 +80,7 @@ _start:
 	csrw	sstatus, t0
 	la		t1, main
 	csrw	sepc, t1
+
 	# Setting `mideleg` (machine interrupt delegate) register:
 	# 1 << 1   : Software interrupt delegated to supervisor mode
 	# 1 << 5   : Timer interrupt delegated to supervisor mode
@@ -111,6 +112,12 @@ _start:
 	# grabs a fresh copy of the SATP register and associated tables.
 	sfence.vma
 	# sret will put us in supervisor mode and re-enable interrupts
+
+	li t0, -1                # Max addressable memory
+	csrw pmpaddr0, t0        # Set PMP region 0 to cover all memory
+	li t0, 0xF               # R/W/X, TOR mode
+	csrw pmpcfg0, t0         # Enable full access
+
 	sret
 3:
 
