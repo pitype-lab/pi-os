@@ -198,8 +198,8 @@ zalloc ref size = do
        zeroPages (prim__inc_ptr ptr (cast 8) 1) n
 
 export
-savePages : IORef (List PageBits) -> IO ()
-savePages ref = do
+savePages : AnyPtr -> IORef (List PageBits) -> IO ()
+savePages root ref = do
   pages <- readIORef ref
   save pages 0
 
@@ -207,13 +207,13 @@ savePages ref = do
     save : List PageBits -> Bits32 -> IO ()
     save [] n = pure ()
     save (Empty::xs) n = do
-      setPtr (prim__inc_ptr heapStart n  1) $ cast {to=Bits8} 0
+      setPtr (prim__inc_ptr root n  1) $ cast {to=Bits8} 0
       save xs (n+1)
     save (Taken::xs) n = do
-      setPtr (prim__inc_ptr heapStart (cast n) 1) $ cast {to=Bits8} 1
+      setPtr (prim__inc_ptr root (cast n) 1) $ cast {to=Bits8} 1
       save xs (n+1)
     save (Last::xs) n =  do
-      setPtr (prim__inc_ptr heapStart (cast n) 1) $ cast {to=Bits8} 2
+      setPtr (prim__inc_ptr root (cast n) 1) $ cast {to=Bits8} 2
       save xs (n+1)
 
 export
@@ -226,7 +226,8 @@ getPages = do
     read : Nat -> IO (List PageBits)
     read Z = pure []
     read (S n) = do
-      let ptr = (prim__inc_ptr heapStart (cast n) 1)
+      let align = ((cast {to=Bits64} (cast_AnyPtrNat heapStart)) + ((shiftL 1 12) - 1)) .&. (complement ((shiftL 1 12) - 1))
+      let ptr = (prim__inc_ptr (cast_Bits64AnyPtr align) (cast n) 1)
       val <- deref {a=Bits8} ptr
       case val of
         1 => do

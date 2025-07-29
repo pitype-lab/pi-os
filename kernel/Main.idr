@@ -16,6 +16,7 @@ kinit = do
   println "Init PI OS memory"
   let init_pages =  replicate (cast numPages) Empty
   pagesRef <- newIORef init_pages
+  page <- zalloc pagesRef ((cast {to=Nat} $ (cast {to=Double} numPages) / (cast {to=Double} pageSize))+1)
   root <- zalloc pagesRef 1
   println "Map text section"
   id_map_range pagesRef root (cast_AnyPtrNat textStart) (cast_AnyPtrNat textEnd) ReadExecute
@@ -43,6 +44,9 @@ kinit = do
   println "Map PLIC section"
   id_map_range pagesRef root 0x0c000000 0x0c002000 ReadWrite
   id_map_range pagesRef root 0x0c200000 0x0c208000 ReadWrite
+  id_map_range pagesRef root (cast_AnyPtrNat page) ((cast_AnyPtrNat page)+numPages) ReadWrite
+  println "Save page"
+  savePages page pagesRef
   println "Finish initialising memory"
   pure $ cast $ (shiftR (cast {to=Bits64} (cast_AnyPtrNat root)) 12) .|. (shiftL 8 60) 
 
@@ -50,6 +54,9 @@ kinit = do
 main : IO ()
 main = do
   println "Welcome to PI-OS!"
+  pagesRef <- getPages
+  pages <- readIORef pagesRef
+  println $ show $ take 50 pages
   println "Bye !"
   exit
 
