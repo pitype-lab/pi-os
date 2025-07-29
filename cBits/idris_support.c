@@ -27,9 +27,10 @@ char* idris2_malloc_start() { return MALLOC_START; }
 char* idris2_heap_start() { return HEAP_START; }
 size_t idris2_heap_size() { return HEAP_SIZE; }
 
+
 // Kernel init
-size_t kinit() {
- Value *closure_0 = (Value *)idris2_mkClosure((Value *(*)())Main_kinit, 1, 1);
+uint64_t kinit() {
+  Value *closure_0 = (Value *)idris2_mkClosure((Value *(*)())Main_kinit, 1, 1);
                                                             
   Value * var_0 = closure_0;                               
   Value *closure_1 = (Value *)idris2_mkClosure((Value *(*)())PrimIO_unsafePerformIO, 1, 1);
@@ -37,7 +38,9 @@ size_t kinit() {
 
 	Value_Integer *ret = (Value_Integer *)idris2_trampoline(closure_0);
 
-  return (size_t)mpz_get_lsb(ret->i,32);
+  uint64_t satp = (uint64_t)mpz_get_ui(ret->i);
+
+	return (uint64_t)satp;
 }
 
 // utils
@@ -81,6 +84,28 @@ char* itoa(int value, char* result, int base) {
         *ptr1++ = tmp_char;
     }
     return result;
+}
+
+void u64_to_str(uint64_t value, char *str) {
+    char buffer[21];  // Max length for 64-bit decimal + null terminator
+    int i = 0;
+
+    if (value == 0) {
+        str[0] = '0';
+        str[1] = '\0';
+        return;
+    }
+
+    while (value > 0) {
+        buffer[i++] = '0' + (value % 10);
+        value /= 10;
+    }
+
+    // Reverse the digits into the output string
+    for (int j = 0; j < i; ++j) {
+        str[j] = buffer[i - j - 1];
+    }
+    str[i] = '\0';
 }
 
 char* ptrtoa(void* ptr, char* result) {
