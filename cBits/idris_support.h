@@ -33,6 +33,7 @@ size_t idris2_heap_size();
 Value *PrimIO_unsafePerformIO(Value * var_0);
 Value *Main_kinit(Value * var_0);
 size_t kinit();
+void kinit_hart(size_t hartid);
 
 // utils
 void print(char *str);

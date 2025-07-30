@@ -43,6 +43,26 @@ uint64_t kinit() {
 	return (uint64_t)satp;
 }
 
+uint64_t m_trap(size_t epc, size_t tval, size_t cause, size_t hart, size_t status) {
+  Value *var_0 = (Value *)idris2_mkClosure((Value *(*)())PrimIO_unsafePerformIO, 1, 1);
+
+	Value_Integer *var_1 = idris2_mkInteger();
+	mpz_set_si(var_1->i, epc);
+	Value_Integer *var_2 = idris2_mkInteger();
+	mpz_set_si(var_2->i, tval);
+	Value_Integer *var_3 = idris2_mkInteger();
+	mpz_set_si(var_3->i, cause);
+	Value_Integer *var_4 = idris2_mkInteger();
+	mpz_set_si(var_4->i, hart);
+	Value_Integer *var_5 = idris2_mkInteger();
+	mpz_set_si(var_5->i, status);
+
+  Value *var_6 = idris2_trampoline(Trap_m_trap(var_1, var_2, var_3, var_4, var_5));
+  Value_Integer *ret = (Value_Integer *)idris2_apply_closure(var_6, idris2_newReference(var_0));
+
+ 	return (uint64_t)mpz_get_ui(ret->i);
+}
+
 // utils
 
 char *UART=(char*) 0x10000000;
