@@ -43,6 +43,12 @@ uint64_t kinit() {
 	return (uint64_t)satp;
 }
 
+void kinit_hart(size_t hartid) {
+}
+
+void m_trap(size_t epc, size_t tval, size_t cause, size_t hart, size_t status) {
+}
+
 // utils
 
 char *UART=(char*) 0x10000000;
