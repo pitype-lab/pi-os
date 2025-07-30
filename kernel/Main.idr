@@ -33,7 +33,7 @@ kinit = do
   println "Map kernel uart section"
   map pagesRef root 0x10000000 0x10000000 ReadWrite
   println "Map kernel debug exit section"
- -- map pagesRef root 0x100000 0x100000 ReadWrite
+  map pagesRef root 0x100000 0x100000 ReadWrite
   println "Map CLINT section"
   map pagesRef root 0x02000000 0x02000000 ReadWrite
   println "Map MTIMECMP section"
@@ -52,9 +52,9 @@ kinit = do
 main : IO ()
 main = do
   println "Welcome to PI-OS!"
- -- pagesRef <- getPages
- -- pages <- readIORef pagesRef
- -- println $ show $ take 50 pages
+  pagesRef <- getPages
+  pages <- readIORef pagesRef
+  println $ show $ take 50 pages
   println "Bye !"
   exit
 
