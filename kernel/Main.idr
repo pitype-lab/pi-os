@@ -32,9 +32,8 @@ kinit = do
   id_map_range pagesRef root (cast_AnyPtrNat kernelStackEnd) (cast_AnyPtrNat mallocStart) ReadWrite
   println "Map kernel uart section"
   map pagesRef root 0x10000000 0x10000000 ReadWrite
-  map pagesRef root 0x100000 0x100000 ReadWrite
   println "Map kernel debug exit section"
-  map pagesRef root 0x555 0x555 ReadWrite
+ -- map pagesRef root 0x100000 0x100000 ReadWrite
   println "Map CLINT section"
   map pagesRef root 0x02000000 0x02000000 ReadWrite
   println "Map MTIMECMP section"
@@ -50,13 +49,12 @@ kinit = do
   println "Finish initialising memory"
   pure $ cast $ (shiftR (cast {to=Bits64} (cast_AnyPtrNat root)) 12) .|. (shiftL 8 60) 
 
-
 main : IO ()
 main = do
   println "Welcome to PI-OS!"
-  pagesRef <- getPages
-  pages <- readIORef pagesRef
-  println $ show $ take 50 pages
+ -- pagesRef <- getPages
+ -- pages <- readIORef pagesRef
+ -- println $ show $ take 50 pages
   println "Bye !"
   exit
 
