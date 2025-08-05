@@ -3,6 +3,7 @@ module Main
 import Data.C.Ptr
 import Data.IORef
 import Pages
+import Plic as Plic
 import Trap
 import Uart
 
@@ -53,8 +54,10 @@ main : IO ()
 main = do
   println "Welcome to PI-OS!"
   pagesRef <- getPages
-  pages <- readIORef pagesRef
-  println $ show $ take 50 pages
+  println "Setting up interrupts and PLIC"
+  Plic.set_threshold 0
+  Plic.enable 10
+  Plic.set_priority 10 1
   println "Bye !"
   exit
 
