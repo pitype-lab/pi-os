@@ -1,9 +1,13 @@
 module Trap
 
 import Data.Bits
+import Data.C.Ptr
 import Data.Nat
 
 import Uart
+
+cast_Bits64AnyPtr: Bits64 -> AnyPtr
+cast_Bits64AnyPtr = believe_me
 
 %foreign "C:exit"
 prim_exit : PrimIO ()
@@ -55,6 +59,12 @@ m_trap epc tval cause hart status = do
   
   where
     inAsync : Nat -> IO Nat
+    inAsync 7 = do
+      let mtimecmp = cast_Bits64AnyPtr 0x02004000 
+      let mtime = cast_Bits64AnyPtr 0x0200bff8
+      mtime_val <- deref {a=Bits64} mtime
+      setPtr mtimecmp (mtime_val + 10000000)
+      pure epc
     inAsync cause_num = do
       panic $ "Unhandled async trap CPU#" ++ show hart ++ " -> " ++ show cause_num
       pure epc
