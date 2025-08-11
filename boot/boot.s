@@ -58,6 +58,7 @@ _start:
 	# Machine's exception program counter (MEPC) is set to `kinit`.
 	la		t1, kinit
 	csrw	mepc, t1
+
 	# Set the return address to get us into supervisor mode
 	la		ra, 2f
 	# We use mret here so that the mstatus register is properly updated.
