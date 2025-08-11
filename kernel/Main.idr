@@ -32,14 +32,11 @@ kinit = do
   println "Map kernel heap section"
   id_map_range pagesRef root (cast_AnyPtrNat kernelStackEnd) (cast_AnyPtrNat mallocStart) ReadWrite
   println "Map kernel uart section"
-  map pagesRef root 0x10000000 0x10000000 ReadWrite
+  map pagesRef root 0x10000000 0x10000100 ReadWrite
   println "Map kernel debug exit section"
   map pagesRef root 0x100000 0x100000 ReadWrite
   println "Map CLINT section"
-  map pagesRef root 0x02000000 0x02000000 ReadWrite
-  println "Map MTIMECMP section"
-  map pagesRef root 0x0200b000 0x0200c000 ReadWrite
-  println "Map MTIME section"
+  map pagesRef root 0x02000000 0x0200ffff ReadWrite
   map pagesRef root 0x0200b000 0x0200c000 ReadWrite
   println "Map PLIC section"
   id_map_range pagesRef root 0x0c000000 0x0c002000 ReadWrite
@@ -56,10 +53,10 @@ main = do
   pagesRef <- getPages
   println "Setting up interrupts and PLIC"
   Plic.set_threshold 0
-  Plic.enable 10
-  Plic.set_priority 10 1
-  println "Bye !"
-  exit
+ -- Plic.enable 10
+ -- Plic.set_priority 10 1
+  --println "Bye !"
+  --exit
 
 
 
