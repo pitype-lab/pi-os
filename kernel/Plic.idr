@@ -22,7 +22,6 @@ PLIC_PTR_THRESHOLD  = cast_Bits64AnyPtr 0xc200000
 PLIC_PTR_CLAIM : AnyPtr
 PLIC_PTR_CLAIM  = cast_Bits64AnyPtr 0xc200004
 
-
 export
 set_threshold : Nat -> IO ()
 set_threshold tsh = do

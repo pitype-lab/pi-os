@@ -49,10 +49,10 @@ b64ToHexString n =
 
 %export "urefc:Trap_m_trap"
 export
-m_trap : (epc : Nat) -> (tval : Nat) -> (cause : Nat) -> (hart : Nat) -> (status : Nat) -> IO Nat
+m_trap : (epc : Nat) -> (tval : Nat) -> (cause : Bits64) -> (hart : Nat) -> (status : Nat) -> IO Nat
 m_trap epc tval cause hart status = do
   let cause_num = cast {to=Nat} $ (cast cause) .&. 0xfff
-  let in_async = ((shiftR (cast cause) 63) .&. 1) == 1
+  let in_async = ((shiftR cause 63) .&. 1) == 1
   if in_async 
      then inAsync $ cast cause_num
      else notAsync $ cast cause_num
