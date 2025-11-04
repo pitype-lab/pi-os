@@ -6,6 +6,7 @@ import Pages
 import Plic as Plic
 import Trap
 import Uart
+import VirtIO
 
 import Data.List
 import Data.Bits
@@ -55,6 +56,8 @@ main = do
   --Plic.set_threshold 0
   --Plic.enable 10
   --Plic.set_priority 10 1
+  println "Probe virtio"
+  probe
   println "Bye !"
   exit
 
