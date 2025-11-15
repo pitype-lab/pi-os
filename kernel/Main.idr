@@ -40,9 +40,10 @@ kinit = do
   map pagesRef root 0x02000000 0x0200ffff ReadWrite
   map pagesRef root 0x0200b000 0x0200c000 ReadWrite
   println "Map PLIC section"
-  id_map_range pagesRef root 0x0c000000 0x0c002000 ReadWrite
+  id_map_range pagesRef root 0x0c000000 0x0c002020 ReadWrite
   id_map_range pagesRef root 0x0c200000 0x0c208000 ReadWrite
   id_map_range pagesRef root (cast_AnyPtrNat page) ((cast_AnyPtrNat page)+numPages) ReadWrite
+  id_map_range pagesRef root 0x10001000 0x10008020 ReadWrite
   println "Save page"
   savePages page pagesRef
   println "Finish initialising memory"
@@ -53,9 +54,9 @@ main = do
   println "Welcome to PI-OS!"
   pagesRef <- getPages
   println "Setting up interrupts and PLIC"
-  --Plic.set_threshold 0
-  --Plic.enable 10
-  --Plic.set_priority 10 1
+  Plic.set_threshold 0
+  Plic.enable 8
+  Plic.set_priority 8 1
   println "Probe virtio"
   probe
   println "Bye !"
