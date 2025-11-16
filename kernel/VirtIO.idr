@@ -46,19 +46,29 @@ b64ToHexString n =
                b64ToHexString (n `shiftR` 4) ++
                b64ToHexString (n .&. 15)
 
+setupNetwork : IO ()
+setupNetwork = pure ()
+
+setup : Bits32 -> IO ()
+setup 1 = do
+  println "Setup network"
+  setupNetwork
+
+setup n = println $ "Virtio " ++ show n ++ "not implemented yet" 
 
 export
 probe : IO ()
 probe = do
   for_ [MMIO_VIRTIO_START, MMIO_VIRTIO_START+MMIO_VIRTIO_STRIDE..MMIO_VIRTIO_END] $ \addr => do
-    println $ b64ToHexString $ cast addr
     magicvalue <- deref {a=Bits32} (cast_Bits64AnyPtr $ cast addr)
-    deviceid <- deref {a=Bits8} (cast_Bits64AnyPtr $ cast addr+2)
+    deviceid <- deref {a=Bits32} (cast_Bits64AnyPtr $ cast addr+8)
 
     when (magicvalue /= MMIO_VIRTIO_MAGIC) $ do
       println "Not virtio"
 
-    when (deviceid == 0) $ do
-      println "Not connected"
+    if deviceid == 0
+      then println "Not connected"
+      else setup deviceid
     
     pure ()
+

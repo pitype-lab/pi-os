@@ -52,7 +52,7 @@ kinit = do
 main : IO ()
 main = do
   println "Welcome to PI-OS!"
-  pagesRef <- getPages
+  --pagesRef <- getPages
   println "Setting up interrupts and PLIC"
   Plic.set_threshold 0
   Plic.enable 8
