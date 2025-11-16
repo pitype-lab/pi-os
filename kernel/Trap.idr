@@ -3,11 +3,8 @@ module Trap
 import Data.Bits
 import Data.C.Ptr
 import Data.Nat
-
+import Lib
 import Uart
-
-cast_Bits64AnyPtr: Bits64 -> AnyPtr
-cast_Bits64AnyPtr = believe_me
 
 %foreign "C:exit"
 prim_exit : PrimIO ()
@@ -21,30 +18,6 @@ panic : String -> IO ()
 panic msg = do
   println msg
   exit
-
-private
-b64ToHexString : Bits64 -> String
-b64ToHexString n =
-  case n of
-    0 => "0"
-    1 => "1"
-    2 => "2"
-    3 => "3"
-    4 => "4"
-    5 => "5"
-    6 => "6"
-    7 => "7"
-    8 => "8"
-    9 => "9"
-    10 => "A"
-    11 => "B"
-    12 => "C"
-    13 => "D"
-    14 => "E"
-    15 => "F"
-    other => assert_total $
-               b64ToHexString (n `shiftR` 4) ++
-               b64ToHexString (n .&. 15)
 
 
 %export "urefc:Trap_m_trap"

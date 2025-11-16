@@ -3,6 +3,7 @@ module VirtIO
 import Data.C.Ptr
 import Uart
 import Data.Bits
+import Lib
 
 MMIO_VIRTIO_START : Bits32
 MMIO_VIRTIO_START = 0x10001000
@@ -19,35 +20,28 @@ MMIO_VIRTIO_STRIDE =  0x1000
 MMIO_VIRTIO_MAGIC : Bits32
 MMIO_VIRTIO_MAGIC = 0x74726976
 
-cast_Bits64AnyPtr: Bits64 -> AnyPtr
-cast_Bits64AnyPtr = believe_me
-
-private
-b64ToHexString : Bits64 -> String
-b64ToHexString n =
-  case n of
-    0 => "0"
-    1 => "1"
-    2 => "2"
-    3 => "3"
-    4 => "4"
-    5 => "5"
-    6 => "6"
-    7 => "7"
-    8 => "8"
-    9 => "9"
-    10 => "A"
-    11 => "B"
-    12 => "C"
-    13 => "D"
-    14 => "E"
-    15 => "F"
-    other => assert_total $
-               b64ToHexString (n `shiftR` 4) ++
-               b64ToHexString (n .&. 15)
-
 setupNetwork : IO ()
-setupNetwork = pure ()
+setupNetwork = do
+  ------ STATUS register address = base + 0x70
+  ------ RESET 
+  ------ ACK
+  ------ DRIVER
+  ------ Select queue 0 (RX)
+  ------ Select queue = 1
+  ------ Fill descriptor 0: addr, len, flags
+  ------ For receive descriptors, the device must be allowed to write into buffer:
+  ------ Set flags = VIRTQ_DESC_F_WRITE (value = 2)
+
+  ------ Setup avail ring: flags=0, idx=1, ring[0]=0 ---
+
+  ------ Setup used ring initial zeros
+  ------ Write queue physical addresses into MMIO
+  ------ QUEUE_DESC_LOW  @ 0x40
+  ------ QUEUE_AVAIL_LOW
+  ------ QUEUE_USED_LOW
+  ------ Finally set DRIVER_OK
+
+  pure ()
 
 setup : Bits32 -> IO ()
 setup 1 = do
