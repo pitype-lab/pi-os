@@ -6,6 +6,7 @@ import Pages
 import Plic as Plic
 import Trap
 import Uart
+import Net
 import VirtIO
 
 import Data.List
@@ -58,7 +59,7 @@ main = do
   Plic.enable 8
   Plic.set_priority 8 1
   println "Probe virtio"
-  probe
+  probe (MkInitVirtIO setupNetwork)
   println "Bye !"
   exit
 
