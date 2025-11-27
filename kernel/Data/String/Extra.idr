@@ -1,26 +1,6 @@
-module Lib
+module Data.String.Extra
 
 import Data.Bits
-
-export
-cast_Bits64AnyPtr: Bits64 -> AnyPtr
-cast_Bits64AnyPtr = believe_me
-
-export
-Cast Bits8 AnyPtr where
-  cast = believe_me
-
-export
-Cast Bits16 AnyPtr where
-  cast = believe_me
-
-export
-Cast Bits32 AnyPtr where
-  cast = believe_me
-
-export
-Cast Bits64 AnyPtr where
-  cast = believe_me
 
 export
 b64ToHexString : Bits64 -> String

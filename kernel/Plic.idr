@@ -2,25 +2,22 @@ module Plic
 
 import Data.Bits
 import Data.C.Ptr
-
-export
-cast_Bits64AnyPtr: Bits64 -> AnyPtr
-cast_Bits64AnyPtr = believe_me
+import Data.C.Ptr.Extra
 
 PLIC_PTR_PRIORITY : AnyPtr
-PLIC_PTR_PRIORITY = cast_Bits64AnyPtr 0x0c000000
+PLIC_PTR_PRIORITY = cast {to=AnyPtr} $ the Bits64 0x0c000000
 
 PLIC_PTR_PENDING : AnyPtr
-PLIC_PTR_PENDING = cast_Bits64AnyPtr 0x0c001000
+PLIC_PTR_PENDING = cast {to=AnyPtr} $ the Bits64 0x0c001000
 
 PLIC_PTR_ENABLE : AnyPtr
-PLIC_PTR_ENABLE = cast_Bits64AnyPtr 0x0c002000
+PLIC_PTR_ENABLE = cast {to=AnyPtr} $ the Bits64 0x0c002000
 
 PLIC_PTR_THRESHOLD : AnyPtr
-PLIC_PTR_THRESHOLD  = cast_Bits64AnyPtr 0x0c200000
+PLIC_PTR_THRESHOLD  = cast {to=AnyPtr} $ the Bits64 0x0c200000
 
 PLIC_PTR_CLAIM : AnyPtr
-PLIC_PTR_CLAIM  = cast_Bits64AnyPtr 0x0c200004
+PLIC_PTR_CLAIM  = cast {to=AnyPtr} $ the Bits64 0x0c200004
 
 export
 set_threshold : Nat -> IO ()

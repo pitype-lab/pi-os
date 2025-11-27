@@ -1,8 +1,7 @@
 module Net
 
-import Constants
 import Data.C.Ptr
-import Lib
+import Data.C.Ptr.Extra
 import Uart
 import VirtIO
 
@@ -10,19 +9,21 @@ export
 setupNetwork : Bits64 -> IO ()
 setupNetwork addr = do
   println "Setup network"
-  let statusReg = cast {to=AnyPtr} $ cast {to=Bits64} $ addr + MMIO_VIRTIO_STATUS 
+  let ptr : Ptr Bits8 = cast addr
+  let statusReg = incPtr ptr MMIO_VIRTIO_STATUS 
   ------ RESET 
-  setPtr statusReg $ cast {to=Bits8} 0
+  setPtr statusReg $ the Bits8 0
   ------ ACK
-  setPtr statusReg $ cast {to=Bits8} 1
+  setPtr statusReg $ the Bits8 1
   ------ DRIVER
-  setPtr statusReg $ cast {to=Bits8} 3
+  setPtr statusReg $ the Bits8 3
   ------ Select queue 0 (RX)
-  let queue0Reg = cast {to=AnyPtr} $ addr + 0x30
-  queue0 <- deref {a=Bits64} queue0Reg
+  let ptr : AnyPtr = cast addr
+  let queue0Reg : AnyPtr = prim__inc_ptr ptr (sizeof Bits8) 0x30
+  queue0 : Bits32 <- deref queue0Reg
   ------ Select queue = 1
-  let queue1Reg = cast {to=AnyPtr} $ addr + 0x38
-  queue1 <- deref {a=Bits64} queue1Reg
+  let queue1Reg : AnyPtr = prim__inc_ptr ptr (sizeof Bits8) 0x38
+  queue1 : Bits32 <- deref queue1Reg
   ------ Fill descriptor 0: addr, len, flags
   ------ For receive descriptors, the device must be allowed to write into buffer:
   ------ Set flags = VIRTQ_DESC_F_WRITE (value = 2)

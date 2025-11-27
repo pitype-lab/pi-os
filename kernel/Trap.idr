@@ -2,8 +2,9 @@ module Trap
 
 import Data.Bits
 import Data.C.Ptr
+import Data.C.Ptr.Extra
 import Data.Nat
-import Lib
+import Data.String.Extra
 import Uart
 
 %foreign "C:exit"
@@ -33,8 +34,8 @@ m_trap epc tval cause hart status = do
   where
     inAsync : Nat -> IO Nat
     inAsync 7 = do
-      let mtimecmp = cast_Bits64AnyPtr 0x02004000 
-      let mtime = cast_Bits64AnyPtr 0x0200bff8
+      let mtimecmp = cast {to=AnyPtr} $ the Bits64 0x02004000 
+      let mtime = cast {to=AnyPtr} $ the Bits64 0x0200bff8
       mtime_val <- deref {a=Bits64} mtime
       setPtr mtimecmp (mtime_val + 10000000)
       pure epc
@@ -48,8 +49,8 @@ m_trap epc tval cause hart status = do
       pure epc
     notAsync 7 = do
       println "m_trap"
-      let mtimecmp = cast_Bits64AnyPtr 0x02004000 
-      let mtime = cast_Bits64AnyPtr 0x0200bff8
+      let mtimecmp = cast {to=AnyPtr} $ the Bits64 0x02004000 
+      let mtime = cast {to=AnyPtr} $ the Bits64 0x0200bff8
       mtime_val <- deref {a=Bits64} mtime
       setPtr mtimecmp (mtime_val + 10000000)
       pure epc
