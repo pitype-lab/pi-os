@@ -35,18 +35,6 @@ Cast (Ptr Bits64) AnyPtr where
   cast = believe_me
 
 export
-Cast Bits8 (Ptr Bits8) where
-  cast = believe_me
-
-export
-Cast Bits16 (Ptr Bits64) where
-  cast = believe_me
-
-export
-Cast Bits32 (Ptr Bits32) where
-  cast = believe_me
-
-export
 Cast Bits64 (Ptr Bits8) where
   cast = believe_me
 
