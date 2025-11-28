@@ -67,8 +67,13 @@ Cast AnyPtr (Ptr Bits64) where
   cast = believe_me
 
 export
+Cast AnyPtr Bits32 where
+  cast = believe_me
+
+export
 Cast AnyPtr Bits64 where
   cast = believe_me
+
 
 
 export 

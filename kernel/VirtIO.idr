@@ -3,6 +3,8 @@ module VirtIO
 import Data.C.Ptr
 import Data.C.Ptr.Extra
 import Data.Bits
+import Data.IORef
+import Pages
 import Uart
 
 MMIO_VIRTIO_START : Bits64
@@ -25,7 +27,7 @@ MMIO_VIRTIO_STATUS =  0x70
 public export
 record InitVirtIO where
   constructor MkInitVirtIO
-  initNetwork : Bits64 -> IO ()
+  initNetwork : Bits64 -> IORef (List PageBits) -> IO ()
 
 public export
 record VirtQueueAvailable where
@@ -35,13 +37,13 @@ record VirtQueueAvailable where
   usedEvent : Bits16
 
 private
-setup : Bits32 -> Bits64 -> InitVirtIO -> IO ()
-setup 1 addr init = init.initNetwork addr
-setup n _ _ = println $ "Virtio " ++ show n ++ "not implemented yet" 
+setup : Bits32 -> Bits64 -> IORef (List PageBits) -> InitVirtIO -> IO ()
+setup 1 addr pagesRef init  = init.initNetwork addr pagesRef
+setup n _ _ _ = println $ "Virtio " ++ show n ++ "not implemented yet" 
 
 export
-probe : InitVirtIO -> IO ()
-probe initVirtIO = do
+probe : IORef (List PageBits) -> InitVirtIO -> IO ()
+probe pagesRef initVirtIO = do
   for_ [MMIO_VIRTIO_START, MMIO_VIRTIO_START+MMIO_VIRTIO_STRIDE..MMIO_VIRTIO_END] $ \addr => do
     let ptr : Ptr Bits32 = cast addr
     magicvalue <- deref ptr
@@ -52,7 +54,7 @@ probe initVirtIO = do
 
     if deviceid == 0
       then println "Not connected"
-      else setup deviceid addr initVirtIO
+      else setup deviceid addr pagesRef initVirtIO
     
     pure ()
 

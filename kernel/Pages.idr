@@ -209,7 +209,7 @@ map pagesRef root vaddr paddr bits = do
           shiftR (cast paddr) 12 .&. 0x1ff,
           shiftR (cast paddr) 21 .&. 0x1ff,
           shiftR (cast paddr) 30 .&. 0x3ffffff]
-    let v =  (prim__inc_ptr root (cast $ (index 2 vpn) * 8) 1)
+    let v =  prim__inc_ptr root (sizeof Bits64) (cast $ (index 2 vpn))
     val <- deref {a=Bits64} v
     leaf <- traversePageTable vpn 1 v
     let entry : Bits64 =

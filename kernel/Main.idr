@@ -100,7 +100,7 @@ main = do
   Plic.enable 8
   Plic.set_priority 8 1
   println "Probe virtio"
-  probe (MkInitVirtIO setupNetwork)
+  probe pagesRef (MkInitVirtIO setupNetwork)
   println "Bye !"
   exit
 
