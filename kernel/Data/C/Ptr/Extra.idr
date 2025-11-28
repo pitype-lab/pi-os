@@ -50,17 +50,26 @@ export
 Cast Bits64 (Ptr Bits64) where
   cast = believe_me
 
+export
 Cast AnyPtr (Ptr Bits8) where
   cast = believe_me
 
+export
 Cast AnyPtr (Ptr Bits16) where
   cast = believe_me
 
+export
 Cast AnyPtr (Ptr Bits32) where
   cast = believe_me
 
+export
 Cast AnyPtr (Ptr Bits64) where
   cast = believe_me
+
+export
+Cast AnyPtr Bits64 where
+  cast = believe_me
+
 
 export 
 incPtr : {a : Type} -> (SizeOf a, Cast (Ptr a) AnyPtr) => Ptr a -> Bits32 -> Ptr a
