@@ -1,12 +1,9 @@
-# trap.S
-# Trap handler and global context
-# Steve Operating System
-# Stephen Marz
-# 24 February 2019
-
+.section .text
 .global m_trap_vector
+.align 4
 m_trap_vector:
-	csrr  t0, mstatus       # Read mstatus
+  # Enable FPU
+  csrr  t0, mstatus       # Read mstatus
 	li    t1, (1 << 13)     # FS = 01 (Initial state)
 	or    t0, t0, t1
 	csrw  mstatus, t0       # Write back to enable FPU
@@ -22,4 +19,10 @@ m_trap_vector:
 	call	m_trap
 
 	mret
+
+.global make_syscall
+make_syscall:
+	ecall
+	ret
+
 
