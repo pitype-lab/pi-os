@@ -86,6 +86,11 @@ kinit = do
   id_map_range pagesRef root 0x0c200000 0x0c208000 ReadWrite
   id_map_range pagesRef root (cast $ cast {to=Bits64} page) ((cast $ cast {to=Bits64} page)+(cast {to=Nat} numPages)) ReadWrite
   id_map_range pagesRef root 0x10001000 0x10008020 ReadWrite
+
+  -- Hack to set Net virtio without kernel mem yet
+  -- TODO : Remove when we will have kernel mem
+  id_map_range pagesRef root (cast $ cast {to=Bits64} page+numPages) ((cast $ cast {to=Bits64} page)+(cast {to=Nat} numPages*5)) ReadWrite
+
   println "Save page"
   savePages page pagesRef
   println "Finish initialising memory"
@@ -101,8 +106,6 @@ main = do
   Plic.set_priority 8 1
   println "Probe virtio"
   probe pagesRef (MkInitVirtIO setupNetwork)
-  println "Bye !"
-  exit
 
 
 
