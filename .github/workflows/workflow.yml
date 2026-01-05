@@ -3,12 +3,12 @@ name: Deploy
 on:
   push:
     branches:
-      - main
 
 jobs:
   deploy_staging:
     runs-on: ubuntu-latest
     name: Deploy to staging environment
+    if: github.event.pull_request.merged == true && github.ref == 'refs/heads/main'
     steps:
       - name: Check if PR has deploy label
         id: check_label
