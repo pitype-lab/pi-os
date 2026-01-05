@@ -1,0 +1,14 @@
+name: Deploy
+
+on:
+  push:
+
+jobs:
+  deploy_staging:
+    runs-on: ubuntu-latest
+    name: Deploy to staging environment
+    # if: github.event.pull_request.merged == true && github.ref == 'refs/head/main' && contains(github.event.pull_request.labels.*.name, 'deploy')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+ 
