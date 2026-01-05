@@ -8,7 +8,7 @@ jobs:
   deploy_staging:
     runs-on: ubuntu-latest
     name: Deploy to staging environment
-    if: github.event.pull_request.merged == true && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && contains(github.event.pull_request.labels.*.name, 'deploy') 
     steps:
       - name: Check if PR has deploy label
         id: check_label
