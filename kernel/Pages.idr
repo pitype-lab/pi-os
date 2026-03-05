@@ -1,32 +1,21 @@
 module Pages
 
-import Data.C.Ptr
-import Data.C.Ptr.Extra
 import Data.Bits
-import Data.List
 import Data.IORef
-import Data.Vect
+import Data.List
+import Heap
 import Prelude.Extra.Num
-
-import Debug
 import Uart
-import Trap
-
-%foreign "C:idris2_heap_start"
-heapStart: Nat
-
-%foreign "C:idris2_heap_size"
-heapSize: Nat
 
 export
-pageSize: Nat
-pageSize = 4096
+pageSize: Bits64
+pageSize = 1 `shiftL` 12 
 
 export
-numPages : Nat
-numPages = heapSize / pageSize
+numPages : Bits64
+numPages = cast $ floor $ toDouble heapSize / toDouble pageSize
 
-public export
+export
 data PageBits = Empty | Taken | Last
 
 export
@@ -36,6 +25,30 @@ Show PageBits where
   show Last = "Last"
 
 
+export
+alloc : IORef (List PageBits) -> NatPos -> IO (Either String Bits64)
+alloc ref (size ** prf) = do
+  pages <- readIORef ref
+  case getFirstFreeSpace pages [] 0 of
+    Nothing => pure $ Left "No memory available"
+    Just (pages, location) => pure $ Right 1
+
+  where
+    isFree : List PageBits -> Nat -> Bool
+    isFree (Empty::xs) Z = True
+    isFree (Empty::xs) (S n) = isFree xs n
+    isFree _ _= False
+
+    getFirstFreeSpace :
+         (pages : List PageBits)
+      -> (res : List PageBits) 
+      -> (location : Nat) 
+      -> Maybe (List PageBits, Nat)
+    getFirstFreeSpace [] _ _ = Nothing
+    getFirstFreeSpace (x::xs) res location = 
+      if isFree (x::xs) size
+         then Just (reverse res ++ replicate size Taken ++ Last::drop size xs, location)
+         else getFirstFreeSpace xs (x::res) (location+1)
 
 
 

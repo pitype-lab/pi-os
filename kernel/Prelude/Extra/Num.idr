@@ -1,10 +1,15 @@
 module Prelude.Extra.Num
 
-export
-Fractional Bits64 where
-  (/) a b = cast {to=Bits64} $ (cast {to=Double} a) / (cast {to=Double} b)
+import Data.So
 
 export
-Fractional Nat where
-  (/) a b = cast {to=Nat} $ (cast {to=Double} a) / (cast {to=Double} b)
+toDouble : Bits64 -> Double
+toDouble x = cast {to=Double} x
 
+public export
+NatPos : Type
+NatPos = (n : Nat ** So (n > 0))
+
+export
+mkNatPos : (n : Nat) -> {auto prf : So (n > 0)} -> NatPos
+mkNatPos n = (n ** prf)
