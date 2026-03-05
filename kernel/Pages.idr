@@ -24,7 +24,6 @@ Show PageBits where
   show Taken = "Taken"
   show Last = "Last"
 
-
 export
 alloc : IORef (List PageBits) -> NatPos -> IO (Either String Bits64)
 alloc ref (size ** prf) = do
