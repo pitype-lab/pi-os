@@ -6,6 +6,7 @@ import Data.List
 import Heap
 import Prelude.Extra.Num
 import Uart
+import Data.So
 
 export
 pageSize: Bits64
@@ -24,10 +25,33 @@ Show PageBits where
   show Taken = "Taken"
   show Last = "Last"
 
+-- Ensure that mkPages is the only way to create Pages, so that we can guarantee the length of the list of PageBits is always numPages
+namespace PagesCon
+  export
+  data Pages : Type where
+    MkPages : 
+         (xs : List PageBits)
+      -> (0 _ : So (length xs == numPages))
+      -> Pages
+
+  export
+  mkPages : List PageBits -> Maybe Pages
+  mkPages xs = 
+    case decSo (length xs == cast numPages) of
+      Yes prf => Just (MkPages xs prf)
+      No _    => Nothing
+
+  export
+  getPages : Pages -> List PageBits
+  getPages (MkPages xs prf) = xs
+
+pages : Maybe Pages
+pages = mkPages (replicate (cast numPages) Empty)
+
 export
-alloc : IORef (List PageBits) -> NatPos -> IO (Either String Bits64)
+alloc : IORef Pages -> NatPos -> IO (Either String Bits64)
 alloc ref (size ** prf) = do
-  pages <- readIORef ref
+  pages <- readIORef ref >>= (pure . getPages)
   case getFirstFreeSpace pages [] 0 of
     Nothing => pure $ Left "No memory available"
     Just (pages, location) => pure $ Right 1
@@ -48,6 +72,8 @@ alloc ref (size ** prf) = do
       if isFree (x::xs) size
          then Just (reverse res ++ replicate size Taken ++ Last::drop size xs, location)
          else getFirstFreeSpace xs (x::res) (location+1)
+
+
 
 
 
