@@ -17,7 +17,7 @@ pageOrder = 12
 
 export
 numPages : Nat
-numPages = cast $ floor $ toDouble heapSize / toDouble pageSize
+numPages = cast $ toDouble heapSize / toDouble pageSize
 
 export
 data PageBits = Empty | Taken | Last
@@ -48,8 +48,9 @@ namespace PagesCon
   getPages : Pages -> List PageBits
   getPages (MkPages xs prf) = xs
 
-pages : Maybe Pages
-pages = mkPages (replicate numPages Empty)
+export
+kpages : Maybe Pages
+kpages = mkPages (replicate numPages Empty)
 
 data AllocPagesErrors = NoMemory | HeapOutOfBounds
 

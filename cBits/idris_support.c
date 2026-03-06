@@ -44,7 +44,7 @@ uint64_t kinit() {
 }
 
 uint64_t m_trap(size_t epc, size_t tval, size_t cause, size_t hart, size_t status) {
-  Value *var_0 = (Value *)idris2_mkClosure((Value *(*)())PrimIO_unsafePerformIO, 1, 1);
+  /*Value *var_0 = (Value *)idris2_mkClosure((Value *(*)())PrimIO_unsafePerformIO, 1, 1);
 
 	Value_Integer *var_1 = idris2_mkInteger();
 	mpz_set_si(var_1->i, epc);
@@ -60,7 +60,8 @@ uint64_t m_trap(size_t epc, size_t tval, size_t cause, size_t hart, size_t statu
   Value *var_6 = idris2_trampoline(Trap_m_trap(var_1, var_2, var_3, var_4, var_5));
   Value_Integer *ret = (Value_Integer *)idris2_apply_closure(var_6, idris2_newReference(var_0));
 
- 	return (uint64_t)mpz_get_ui(ret->i);
+ 	return (uint64_t)mpz_get_ui(ret->i); */
+  return 0;
 }
 
 // utils
