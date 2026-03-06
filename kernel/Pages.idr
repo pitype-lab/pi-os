@@ -13,7 +13,7 @@ pageSize: Bits64
 pageSize = 1 `shiftL` 12 
 
 export
-numPages : Bits64
+numPages : Nat
 numPages = cast $ floor $ toDouble heapSize / toDouble pageSize
 
 export
@@ -46,7 +46,7 @@ namespace PagesCon
   getPages (MkPages xs prf) = xs
 
 pages : Maybe Pages
-pages = mkPages (replicate (cast numPages) Empty)
+pages = mkPages (replicate numPages Empty)
 
 export
 alloc : IORef Pages -> NatPos -> IO (Either String Bits64)

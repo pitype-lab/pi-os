@@ -4,6 +4,7 @@ import Data.C.Extra
 import Data.So
 import public Memory
 
+-- Ensure that mkHeapAddr is the only way to create a heap address, so that we can guarantee that all heap addresses are within the bounds of the heap
 namespace HeapCon
   export
   data HeapAddr : Type where
