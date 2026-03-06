@@ -37,7 +37,7 @@ namespace PagesCon
   export
   mkPages : List PageBits -> Maybe Pages
   mkPages xs = 
-    case decSo (length xs == cast numPages) of
+    case decSo $ length xs == numPages of
       Yes prf => Just (MkPages xs prf)
       No _    => Nothing
 
