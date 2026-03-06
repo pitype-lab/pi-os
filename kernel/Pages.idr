@@ -12,6 +12,9 @@ export
 pageSize: Bits64
 pageSize = 1 `shiftL` 12 
 
+pageOrder : Nat
+pageOrder = 12
+
 export
 numPages : Nat
 numPages = cast $ floor $ toDouble heapSize / toDouble pageSize
@@ -48,13 +51,25 @@ namespace PagesCon
 pages : Maybe Pages
 pages = mkPages (replicate numPages Empty)
 
+data AllocPagesErrors = NoMemory | HeapOutOfBounds
+
+alignVal : Bits64 -> Nat -> Bits64
+alignVal val order = 
+  let o = cast $ 1  `shiftL` order
+  in (val + o) .&. complement o
+
+
+-- TODO currently returning a heap address. It would be better to return the heap address + the number of pages allocated
 export
-alloc : IORef Pages -> NatPos -> IO (Either String Bits64)
+alloc : IORef Pages -> NatPos -> IO (Either AllocPagesErrors HeapAddr)
 alloc ref (size ** prf) = do
   pages <- readIORef ref >>= (pure . getPages)
   case getFirstFreeSpace pages [] 0 of
-    Nothing => pure $ Left "No memory available"
-    Just (pages, location) => pure $ Right 1
+    Nothing => pure $ Left NoMemory
+    Just (pages, location) => 
+      case mkHeapAddr $ alignVal (heapStart + cast location * pageSize) pageOrder of
+        Just addr =>  pure $ Right addr
+        Nothing => pure $ Left HeapOutOfBounds
 
   where
     isFree : List PageBits -> Nat -> Bool
