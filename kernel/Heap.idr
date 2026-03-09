@@ -38,3 +38,9 @@ write_heap_bits32 addr val = primIO $ prim__set_bits32 (getHeapAddr addr) val
 export
 write_heap_bits64 : HeapAddr -> Bits64 -> IO ()
 write_heap_bits64 addr val = primIO $ prim__set_bits64 (getHeapAddr addr) val
+
+export
+increment_heap_addr : HeapAddr-> Maybe HeapAddr
+increment_heap_addr addr = 
+  let newAddr = getHeapAddr addr + 8 in
+  mkHeapAddr newAddr

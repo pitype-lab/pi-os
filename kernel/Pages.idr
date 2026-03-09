@@ -1,93 +1,98 @@
 module Pages
 
 import Data.Bits
-import Data.IORef
+import Data.C.Ptr
+import Data.C.Array8
+import Data.Linear.ELift1
+import public Data.IORef
 import Data.List
 import Heap
 import Prelude.Extra.Num
 import Uart
 import Data.So
+import public Data.Linear.Token
+import Control.App
 
 export
 pageSize: Bits64
-pageSize = 1 `shiftL` 12 
+pageSize = 1 `shiftL` 12
 
-pageOrder : Nat
+pageOrder : Fin 64
 pageOrder = 12
 
 export
 numPages : Nat
 numPages = cast $ toDouble heapSize / toDouble pageSize
 
-export
-data PageBits = Empty | Taken | Last
+
+alignVal : Bits64 -> Fin 64 -> Bits64
+alignVal val order = 
+  let o = 1  `shiftL` order
+  in (val + o) .&. complement o
 
 export
-Show PageBits where
-  show Empty = "Empty"
-  show Taken = "Taken"
-  show Last = "Last"
+record PageBits where
+  constructor MkPageBits
+  Empty : Bits8
+  Taken : Bits8
+  Last : Bits8
 
--- Ensure that mkPages is the only way to create Pages, so that we can guarantee the length of the list of PageBits is always numPages
-namespace PagesCon
-  export
-  data Pages : Type where
-    MkPages : 
-         (xs : List PageBits)
-      -> (0 _ : So (length xs == numPages))
-      -> Pages
+pageBits : PageBits
+pageBits = MkPageBits {
+  Empty = 0,
+  Taken = 1 `shiftL` 0,
+  Last = 1 `shiftL` 1
+}
 
-  export
-  mkPages : List PageBits -> Maybe Pages
-  mkPages xs = 
-    case decSo $ length xs == numPages of
-      Yes prf => Just (MkPages xs prf)
-      No _    => Nothing
+public export
+data PagesStateTag : Type where
 
-  export
-  getPages : Pages -> List PageBits
-  getPages (MkPages xs prf) = xs
-
-export
-kpages : Maybe Pages
-kpages = mkPages (replicate numPages Empty)
+public export
+record PagesState where
+  constructor MkPagesState
+  pagesState : (n ** CArray8IO n)
 
 data AllocPagesErrors = NoMemory | HeapOutOfBounds
 
-alignVal : Bits64 -> Nat -> Bits64
-alignVal val order = 
-  let o = cast $ 1  `shiftL` order
-  in (val + o) .&. complement o
-
-
--- TODO currently returning a heap address. It would be better to return the heap address + the number of pages allocated
 export
-alloc : IORef Pages -> NatPos -> IO (Either AllocPagesErrors HeapAddr)
-alloc ref (size ** prf) = do
-  pages <- readIORef ref >>= (pure . getPages)
-  case getFirstFreeSpace pages [] 0 of
-    Nothing => pure $ Left NoMemory
-    Just (pages, location) => 
-      case mkHeapAddr $ alignVal (heapStart + cast location * pageSize) pageOrder of
-        Just addr =>  pure $ Right addr
-        Nothing => pure $ Left HeapOutOfBounds
+Show AllocPagesErrors where
+  show NoMemory = "Empty"
+  show HeapOutOfBounds = "HeapOutOfBounds"
 
-  where
-    isFree : List PageBits -> Nat -> Bool
-    isFree (Empty::xs) Z = True
-    isFree (Empty::xs) (S n) = isFree xs n
-    isFree _ _= False
+public export
+interface HasPages e where
+  alloc : NatPos -> App e (Either AllocPagesErrors HeapAddr)
+  free  : HeapAddr -> App e ()
 
-    getFirstFreeSpace :
-         (pages : List PageBits)
-      -> (res : List PageBits) 
-      -> (location : Nat) 
-      -> Maybe (List PageBits, Nat)
-    getFirstFreeSpace [] _ _ = Nothing
-    getFirstFreeSpace (x::xs) res location = 
-      if isFree (x::xs) size
-         then Just (reverse res ++ replicate size Taken ++ Last::drop size xs, location)
-         else getFirstFreeSpace xs (x::res) (location+1)
+
+export
+Has [State PagesStateTag PagesState, PrimIO] e => HasPages e where
+  alloc size = do
+    st <- get PagesStateTag
+    let (n ** pagesState) = st.pagesState
+
+    let i = 5
+    case isLTE (S i) n of
+      Yes prf => primIO $ lift1 $ setNat pagesState i pageBits.Taken
+      No _ => pure () 
+    
+    pure (Left NoMemory)
+
+    where
+      isFree : (dpair : (n ** CIArray8 n)) -> (location : Fin (fst dpair)) -> (size : Nat) -> Bool
+      isFree (n ** pagesState) location Z = at pagesState location == pageBits.Empty
+      isFree (n ** pagesState) location size = False
+  
+  free addr = pure ()
+
+
+
+
+
+
+
+
+
 
 
 

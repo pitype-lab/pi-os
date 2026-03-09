@@ -1,10 +1,10 @@
 module Prelude.Extra.Num
 
-import Data.So
+import public Data.So
 
 export
-toDouble : Bits64 -> Double
-toDouble x = cast {to=Double} x
+toDouble : Cast from Double => from -> Double
+toDouble = cast
 
 public export
 NatPos : Type

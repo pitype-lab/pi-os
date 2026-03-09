@@ -1,29 +1,30 @@
 module Main
 
+import Data.Bits
+import Data.C.Array8
 import Data.List
+import Data.IORef
 import Data.String.Extra
+import Heap
 import Memory
 import Pages
+import Prelude.Extra.Num
 import System
 import Uart
+import Control.App
 
-%export "urefc:Main_kinit"
-kinit : IO ()
-kinit = println "Init PI OS memory"
+kinit : Has [HasPages, HasUart] e => App e ()
+kinit = do
+  putStrLn "Init PI OS memory"
+  result <- alloc (mkNatPos 4)
+  pure ()
+
+%export "urefc:Main_runKInit"
+runKInit : IO ()
+runKInit = do
+  test <- malloc 10
+  pagesBits <- runIO $ calloc1 numPages
+  run $ new {tag = PagesStateTag} (MkPagesState (numPages ** pagesBits)) kinit
 
 main : IO ()
-main = do
-  println "Welcome to PI-OS!"
-  (Just pagesWithLengthPrf) <- pure kpages
-      | Nothing => panic "Failed to initialize pages"
-  let pages = getPages pagesWithLengthPrf
-  println $ "Number of pages: " ++ show numPages
-  println $ "Pages: " ++ (show $ take 10 pages)
-  println $ "Heap start: " ++ b64ToHexString heapStart
-  
-  exit
-
-
-
-
-
+main = pure ()

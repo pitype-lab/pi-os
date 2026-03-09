@@ -1,6 +1,7 @@
 module System
 
 import Uart
+import Control.App
 
 %foreign "C:exit"
 prim_exit : PrimIO ()
@@ -10,7 +11,7 @@ exit : IO ()
 exit = primIO prim_exit
 
 export
-panic : String -> IO ()
+panic : Has [HasUart,PrimIO] e => String -> App e ()
 panic msg = do
-  println msg
-  exit
+  putStrLn msg
+  primIO exit
