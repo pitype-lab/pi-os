@@ -22,7 +22,6 @@ kinit = do
 %export "urefc:Main_runKInit"
 runKInit : IO ()
 runKInit = do
-  test <- malloc 10
   pagesBits <- runIO $ calloc1 numPages
   run $ new {tag = PagesStateTag} (MkPagesState (numPages ** pagesBits)) kinit
 
