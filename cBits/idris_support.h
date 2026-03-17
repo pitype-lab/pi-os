@@ -31,7 +31,7 @@ size_t idris2_heap_size();
 
 // Kernel init
 Value *PrimIO_unsafePerformIO(Value * var_0);
-Value *Main_kinit(Value * var_0);
+Value *Main_runKInit(Value * var_0);
 size_t kinit();
 void kinit_hart(size_t hartid);
 

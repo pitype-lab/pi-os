@@ -4,17 +4,15 @@ import Data.Bits
 import Data.C.Ptr
 import Data.C.Array8
 import Data.Linear.ELift1
-import public Data.IORef
 import Data.List
 import Heap
+import Kernel
 import Prelude.Extra.Num
-import Uart
 import Data.So
 import public Data.Linear.Token
-import Control.App
-import public Control.App.Reader
 import Data.Nat
 import Data.Array.Index
+import Syntax.T1 
 
 export
 pageSize: Bits64
@@ -26,7 +24,6 @@ pageOrder = 12
 export
 numPages : Nat
 numPages = cast $ toDouble heapSize / toDouble pageSize
-
 
 alignVal : Bits64 -> Fin 64 -> Bits64
 alignVal val order = 
@@ -48,21 +45,6 @@ pageBits = MkPageBits {
 }
 
 public export
-PageTable : Type
-PageTable = (n ** CArray8 World n)
-
-public export
-data PageTableTag : Type where
-
-public export
-interface HasPageTable e where
-  askPageTable : App e PageTable
-
-export
-Has [Reader PageTableTag PageTable] e => HasPageTable e where
-  askPageTable = ask PageTableTag
-
-public export
 data AllocPagesErrors = NoMemory | HeapOutOfBounds
 
 export
@@ -70,44 +52,17 @@ Show AllocPagesErrors where
   show NoMemory = "Empty"
   show HeapOutOfBounds = "HeapOutOfBounds"
 
-public export
-interface HasPages e where
-  alloc : NatPos -> App e (Either AllocPagesErrors HeapAddr)
-  free  : HeapAddr -> App e ()
+export
+alloc : NatPos -> Kernel (Either AllocPagesErrors HeapAddr)
+alloc size = do
+  (n ** arr) <- ask
+  let i = 5
+  case isLTE (S i) n of
+    Yes prf => runIO $ setNat arr i pageBits.Taken
+    No _ => pure ()
+  pure (Left NoMemory)
 
 export
-Has [HasPageTable, PrimIO] e => HasPages e where
-  alloc size = do
-    pageTable <- askPageTable
-    let (n ** arr) = pageTable
-
-    let i = 5
-    case isLTE (S i) n of
-      Yes prf => primIO $ lift1 $ setNat arr i pageBits.Taken
-      No _ => pure () 
-    
-    pure (Left NoMemory)
-
-    where
-      isFree : (dpair : (n ** CIArray8 n)) -> (location : Fin (fst dpair)) -> (size : Nat) -> Bool
-      isFree (n ** pagesState) location Z = at pagesState location == pageBits.Empty
-      isFree (n ** pagesState) location size = False
-  
-  free addr = pure ()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+free : Nat -> Kernel ()
+free addr = pure ()
 
