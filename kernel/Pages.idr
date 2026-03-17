@@ -12,6 +12,9 @@ import Uart
 import Data.So
 import public Data.Linear.Token
 import Control.App
+import public Control.App.Reader
+import Data.Nat
+import Data.Array.Index
 
 export
 pageSize: Bits64
@@ -45,13 +48,21 @@ pageBits = MkPageBits {
 }
 
 public export
-data PagesStateTag : Type where
+PageTable : Type
+PageTable = (n ** CArray8 World n)
 
 public export
-record PagesState where
-  constructor MkPagesState
-  pagesState : (n ** CArray8IO n)
+data PageTableTag : Type where
 
+public export
+interface HasPageTable e where
+  askPageTable : App e PageTable
+
+export
+Has [Reader PageTableTag PageTable] e => HasPageTable e where
+  askPageTable = ask PageTableTag
+
+public export
 data AllocPagesErrors = NoMemory | HeapOutOfBounds
 
 export
@@ -64,16 +75,15 @@ interface HasPages e where
   alloc : NatPos -> App e (Either AllocPagesErrors HeapAddr)
   free  : HeapAddr -> App e ()
 
-
 export
-Has [State PagesStateTag PagesState, PrimIO] e => HasPages e where
+Has [HasPageTable, PrimIO] e => HasPages e where
   alloc size = do
-    st <- get PagesStateTag
-    let (n ** pagesState) = st.pagesState
+    pageTable <- askPageTable
+    let (n ** arr) = pageTable
 
     let i = 5
     case isLTE (S i) n of
-      Yes prf => primIO $ lift1 $ setNat pagesState i pageBits.Taken
+      Yes prf => primIO $ lift1 $ setNat arr i pageBits.Taken
       No _ => pure () 
     
     pure (Left NoMemory)

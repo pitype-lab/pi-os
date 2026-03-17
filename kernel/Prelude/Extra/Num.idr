@@ -1,5 +1,6 @@
 module Prelude.Extra.Num
 
+import public Data.Nat
 import public Data.So
 
 export
@@ -8,8 +9,8 @@ toDouble = cast
 
 public export
 NatPos : Type
-NatPos = (n : Nat ** So (n > 0))
+NatPos = (n : Nat ** GT n 0)
 
-export
-mkNatPos : (n : Nat) -> {auto prf : So (n > 0)} -> NatPos
-mkNatPos n = (n ** prf)
+public export
+mkNatPos : (n : Nat) -> {auto ok : So (n > 0)} -> NatPos
+mkNatPos (S k) = (S k ** LTESucc LTEZero)

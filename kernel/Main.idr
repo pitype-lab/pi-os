@@ -1,5 +1,6 @@
 module Main
 
+import Control.App
 import Data.Bits
 import Data.C.Array8
 import Data.List
@@ -11,7 +12,6 @@ import Pages
 import Prelude.Extra.Num
 import System
 import Uart
-import Control.App
 
 kinit : Has [HasPages, HasUart] e => App e ()
 kinit = do
@@ -22,8 +22,9 @@ kinit = do
 %export "urefc:Main_runKInit"
 runKInit : IO ()
 runKInit = do
-  pagesBits <- runIO $ calloc1 numPages
-  run $ new {tag = PagesStateTag} (MkPagesState (numPages ** pagesBits)) kinit
+  pageTable <- runIO (calloc1 numPages) <&> \pageTable => (numPages ** pageTable)
+  run $ env {tag = PageTableTag} pageTable kinit
 
 main : IO ()
 main = pure ()
+
