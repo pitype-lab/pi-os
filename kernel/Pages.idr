@@ -14,6 +14,7 @@ import public Data.Linear.Token
 import Data.Nat
 import Data.Array.Index
 import Syntax.T1
+import Uart
 
 export
 pageSize: Bits64
@@ -127,6 +128,47 @@ alloc (Element(S last) _) = do
 
 
 export
-free : Nat -> Kernel n ()
-free addr = pure ()
+zalloc : {numPages : Nat} -> (size : NatPos) -> (0 _ : LT (fst size) numPages) => Kernel numPages (Either AllocPagesErrors HeapAddr)
+zalloc size = do
+  res <- alloc size
+  case res of
+    Right heapAddr => do
+      zero heapAddr (cast (fst size) * cast pageSize `div` 8)
+      pure (Right heapAddr)
+    Left err => pure (Left err)
+
+  where
+    zero : HeapAddr -> Nat -> Kernel numPages ()
+    zero addr 0 = pure ()
+    zero addr (S remaining) = do
+      liftIO $ write_heap_bits64 addr 0
+      case increment_heap_addr_bits64 addr of
+        Just next => zero next remaining
+        Nothing   => pure ()
+
+export
+dealloc : {numPages : Nat} -> HeapAddr -> Kernel numPages ()
+dealloc heapAddr = do
+  let addr = getHeapAddr heapAddr
+      location : Nat = cast $ toDouble (addr - allocStart) / toDouble pageSize
+  println $ show location
+  pageTable <- ask 
+  case isLT location numPages of
+    Yes prf => runIO $ free pageTable (natToFinLT location)
+    No _    => pure ()
+
+  where 
+    free : (pageTable : CArray8IO numPages) -> (index : Fin numPages) -> F1' World
+    free pageTable i = T1.do
+      page <- get pageTable i
+      if page /= pageBits.Last
+         then T1.do
+           set pageTable i pageBits.Empty
+           let next = S (finToNat i)
+           case isLT next numPages of
+             Yes prf => free pageTable (natToFinLT next)
+             No _    => pure ()
+         else
+           set pageTable i pageBits.Empty
+            
 

@@ -20,12 +20,16 @@ kinit = do
   println "Init PI OS memory"
   case isLT 4 numPages of
     Yes prf => do
-      res <- alloc @{prf} (mkNatPos 4)
+      (Right heapAddr) <- zalloc @{prf} (mkNatPos 4)
+        | Left err => pure ()
+      dealloc heapAddr
       pure ()
     No _ => println "Page table too small"
   case isLT 2 numPages of
     Yes prf => do
-      res <- alloc @{prf} (mkNatPos 2)
+      (Right heapAddr) <- zalloc @{prf} (mkNatPos 2)
+          | Left err => pure ()
+      dealloc heapAddr
       pure ()
     No _ => println "Page table too small"
   pageTable <- ask

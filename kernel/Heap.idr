@@ -40,7 +40,25 @@ write_heap_bits64 : HeapAddr -> Bits64 -> IO ()
 write_heap_bits64 addr val = primIO $ prim__set_bits64 (getHeapAddr addr) val
 
 export
-increment_heap_addr : HeapAddr-> Maybe HeapAddr
-increment_heap_addr addr = 
+increment_heap_addr_bits8 : HeapAddr -> Maybe HeapAddr
+increment_heap_addr_bits8 addr = 
+  let newAddr = getHeapAddr addr + 1 in
+  mkHeapAddr newAddr
+
+export
+increment_heap_addr_bits16 : HeapAddr -> Maybe HeapAddr
+increment_heap_addr_bits16 addr = 
+  let newAddr = getHeapAddr addr + 2 in
+  mkHeapAddr newAddr
+
+export
+increment_heap_addr_bits32 : HeapAddr -> Maybe HeapAddr
+increment_heap_addr_bits32 addr = 
+  let newAddr = getHeapAddr addr + 4 in
+  mkHeapAddr newAddr
+
+export
+increment_heap_addr_bits64 : HeapAddr -> Maybe HeapAddr
+increment_heap_addr_bits64 addr = 
   let newAddr = getHeapAddr addr + 8 in
   mkHeapAddr newAddr
