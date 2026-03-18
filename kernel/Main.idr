@@ -22,7 +22,6 @@ kinit = do
     Yes prf => do
       (Right heapAddr) <- zalloc @{prf} (mkNatPos 4)
         | Left err => pure ()
-      dealloc heapAddr
       pure ()
     No _ => println "Page table too small"
   case isLT 2 numPages of

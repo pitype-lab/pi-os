@@ -1,6 +1,7 @@
 module Pages
 
 import Data.Bits
+import Data.C.Extra
 import Data.C.Ptr
 import Data.C.Array8
 import Data.C.Array8.Utils
@@ -72,9 +73,7 @@ alloc (Element(S last) _) = do
   let size = S (last)
   pageTable <- ask
   res <- runIO $ withIArray pageTable $ \iPageTable => 
-    case isLT (size + 0) numPages of
-      Yes prf => getFirstFreeSpace @{prf} iPageTable 0 size
-      No _    => Nothing
+    getFirstFreeSpace @{rewrite plusZeroRightNeutral last in %search} iPageTable 0 last
   case res of
     Just location => 
       case isLT (last + location) numPages of
@@ -126,25 +125,24 @@ alloc (Element(S last) _) = do
                Yes prf => getFirstFreeSpace @{prf} pageTable (S location) size
                No _    => Nothing
 
-
 export
 zalloc : {numPages : Nat} -> (size : NatPos) -> (0 _ : LT (fst size) numPages) => Kernel numPages (Either AllocPagesErrors HeapAddr)
 zalloc size = do
   res <- alloc size
   case res of
     Right heapAddr => do
-      zero heapAddr (cast (fst size) * cast pageSize `div` 8)
+      let addr = getHeapAddr heapAddr
+          count = cast (fst size) * pageSize `div` 8
+      liftIO $ zero addr count
       pure (Right heapAddr)
     Left err => pure (Left err)
 
   where
-    zero : HeapAddr -> Nat -> Kernel numPages ()
+    zero : Bits64 -> Bits64 -> IO ()
     zero addr 0 = pure ()
-    zero addr (S remaining) = do
-      liftIO $ write_heap_bits64 addr 0
-      case increment_heap_addr_bits64 addr of
-        Just next => zero next remaining
-        Nothing   => pure ()
+    zero addr remaining = do
+      primIO $ prim__set_bits64 addr 0
+      zero (addr + 8) (remaining - 1)
 
 export
 dealloc : {numPages : Nat} -> HeapAddr -> Kernel numPages ()
