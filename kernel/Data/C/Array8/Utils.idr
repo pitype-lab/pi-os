@@ -26,11 +26,15 @@ fillAll arr = fill arr n
 ||| `m` is the number of 8-byte chunks (i.e. `n `div` 8` for a byte array of size `n`).
 export
 fill64 : (arr : CArray8 World n) -> (m : Nat) -> (0 _ : LTE (m * 8) n) => Bits64 -> F1' World
-fill64 arr 0     _ t = () # t
-fill64 arr (S k) v t =
-  let ptr = anyPtrToBits64 (unsafeUnwrap arr) + cast (k * 8)
-      _ = unsafePerformIO (primIO $ prim__set_bits64 ptr v)
-   in fill64 arr k v t
+fill64 arr m v t =
+  let ptr = anyPtrToBits64 (unsafeUnwrap arr)
+   in go ptr (cast m) v t
+  where
+    go : Bits64 -> Bits64 -> Bits64 -> F1' World
+    go ptr 0         v t = () # t
+    go ptr remaining v t =
+      let _ = unsafePerformIO (primIO $ prim__set_bits64 ptr v)
+       in assert_total $ go (ptr + 8) (remaining - 1) v t
 
 ||| (n `div` 8) * 8 <= n always holds for natural numbers.
 export
