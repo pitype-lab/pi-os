@@ -15,21 +15,21 @@ import Prelude.Extra.Num
 import System
 import Uart
 
-kinit : {n : Nat} -> Kernel n ()
+kinit : {numPages : Nat} -> Kernel numPages ()
 kinit = do
   println "Init PI OS memory"
-  case isLT 4 n of
+  case isLT 4 numPages of
     Yes prf => do
       res <- alloc @{prf} (mkNatPos 4)
       pure ()
     No _ => println "Page table too small"
-  case isLT 2 n of
+  case isLT 2 numPages of
     Yes prf => do
       res <- alloc @{prf} (mkNatPos 2)
       pure ()
     No _ => println "Page table too small"
   pageTable <- ask
-  case isLTE 10 n of
+  case isLTE 10 numPages of
     Yes p => do
       iArr <- runIO $ withIArray pageTable id
       liftIO $ traverseWithIndex_ {f = IO} iArr 10 $ \i, v =>
