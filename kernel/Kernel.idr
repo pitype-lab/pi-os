@@ -12,3 +12,7 @@ public export
 Kernel : Type -> Type
 Kernel = ReaderT PageTable IO
 
+export
+runKernel : PageTable -> Kernel () -> IO ()
+runKernel pageTable app = runReaderT pageTable app
+

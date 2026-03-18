@@ -21,8 +21,8 @@ kinit = do
 %export "urefc:Main_runKInit"
 runKInit : IO ()
 runKInit = do
-  pageTable <- runIO (malloc1 numPages) <&> \pt => (numPages ** pt)
-  runReaderT pageTable kinit
+  pageTable <- initPageTable
+  runKernel pageTable kinit
   exit
 
 main : IO ()

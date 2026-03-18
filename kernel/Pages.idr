@@ -3,6 +3,7 @@ module Pages
 import Data.Bits
 import Data.C.Ptr
 import Data.C.Array8
+import Data.C.Array8.Utils
 import Data.Linear.ELift1
 import Data.List
 import Heap
@@ -12,7 +13,7 @@ import Data.So
 import public Data.Linear.Token
 import Data.Nat
 import Data.Array.Index
-import Syntax.T1 
+import Syntax.T1
 
 export
 pageSize: Bits64
@@ -51,6 +52,15 @@ export
 Show AllocPagesErrors where
   show NoMemory = "Empty"
   show HeapOutOfBounds = "HeapOutOfBounds"
+
+export
+initPageTable : IO PageTable
+initPageTable = do
+  arr <- runIO $ T1.do
+    arr <- malloc1 numPages
+    fillAll arr pageBits.Empty
+    pure arr
+  pure (numPages ** arr)
 
 export
 alloc : NatPos -> Kernel (Either AllocPagesErrors HeapAddr)

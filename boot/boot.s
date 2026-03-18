@@ -37,7 +37,7 @@ _start:
 	csrw mstatus, t0
 
 	# Machine's exception program counter (MEPC) is set to `kinit`.
-	la		t1, kinit
+	la		t1, runKInit
 	csrw	mepc, t1
 
 	la		ra, 2f
