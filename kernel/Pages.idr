@@ -31,6 +31,9 @@ alignVal val order =
   let o = 1  `shiftL` order
   in (val + o) .&. complement o
 
+allocStart : Bits64
+allocStart = alignVal heapStart pageOrder
+
 export
 record PageBits where
   constructor MkPageBits
@@ -54,7 +57,7 @@ Show AllocPagesErrors where
   show HeapOutOfBounds = "HeapOutOfBounds"
 
 export
-initPageTable : IO (numPages ** CArray8 World numPages)
+initPageTable : IO (numPages ** CArray8IO numPages)
 initPageTable = do
   arr <- runIO $ T1.do
     arr <- malloc1 numPages
@@ -75,7 +78,7 @@ alloc (Element(S last) _) = do
     Just location => 
       case isLT (last + location) numPages of
         Yes prfK => do
-          let addr = alignVal (heapStart + (cast location * pageSize)) pageOrder
+          let addr = allocStart + cast location * pageSize
           case mkHeapAddr addr of
                Just heapAddr => do
                  runIO $ T1.do
@@ -99,7 +102,7 @@ alloc (Element(S last) _) = do
         then isFree @{lteSuccLeft prf} pageTable location k
         else False
 
-    markTaken : (pageTable : CArray8 World numPages)
+    markTaken : (pageTable : CArray8IO numPages)
           -> (location : Nat)
           -> (size : Nat)
           -> (0 _ : LT (size + location) numPages)
