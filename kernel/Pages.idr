@@ -63,9 +63,19 @@ initPageTable : IO (numPages ** CArray8IO numPages)
 initPageTable = do
   arr <- runIO $ T1.do
     arr <- malloc1 numPages
-    fillAll arr pageBits.Empty
     pure arr
+
+  -- DISCLAIMER This utterly usafe and the only reason to do so is because calloc1 is currently broken anf of effeciancy 
+  let ptr = anyPtrToBits64 (unsafeUnwrap arr)
+  zero ptr (cast numPages `div` 8)
   pure (numPages ** arr)
+
+  where
+    zero : Bits64 -> Bits64 -> IO ()
+    zero ptr 0 = pure ()
+    zero ptr remaining = do
+      primIO $ prim__set_bits64 ptr (cast pageBits.Empty)
+      zero (ptr + 8) (remaining - 1)
 
 export
 alloc : {numPages : Nat} -> (size : NatPos) -> (0 _ : LT (fst size) numPages) => Kernel numPages (Either AllocPagesErrors HeapAddr)

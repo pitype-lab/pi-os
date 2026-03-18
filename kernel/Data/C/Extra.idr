@@ -1,6 +1,10 @@
 module Data.C.Extra
 
 export
+anyPtrToBits64 : AnyPtr -> Bits64
+anyPtrToBits64 = believe_me
+
+export
 %foreign "C:cptr_deref_bits8, cptr-idris"
 prim__deref_bits8 : Bits64 -> PrimIO Bits8
 
