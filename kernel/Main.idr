@@ -24,55 +24,44 @@ kinit = do
       Right root <- zalloc @{prf} (mkNatPos 1)
         | Left err => println $ "Failed to allocate root page table: " ++ show err
 
-      println "Map text section"
       Right () <- idMapRange root textStart textEnd entryBits.ReadExecute
         | Left err => println $ show err
 
-      println "Map data section"
       Right () <- idMapRange root dataStart dataEnd entryBits.ReadExecute
         | Left err => println $ show err
 
-      println "Map rodata section"
       Right () <- idMapRange root rodataStart rodataEnd entryBits.ReadExecute
         | Left err => println $ show err
 
-      println "Map bss section"
       Right () <- idMapRange root bssStart bssEnd entryBits.ReadWrite
         | Left err => println $ show err
 
-      println "Map kernel stack section"
       Right () <- idMapRange root kernelStackStart kernelStackEnd entryBits.ReadWrite
         | Left err => println $ show err
 
-      println "Map kernel heap section"
       Right () <- idMapRange root kernelStackEnd mallocStart entryBits.ReadWrite
         | Left err => println $ show err
 
-      println "Map kernel uart section"
       Right () <- mmap root 0x10000000 0x10000000 entryBits.ReadWrite
         | Left err => println $ show err
 
-      println "Map kernel debug exit section"
       Right () <- mmap root 0x100000 0x100000 entryBits.ReadWrite
         | Left err => println $ show err
 
-      println "Map CLINT section"
       Right () <- mmap root 0x02000000 0x02000000 entryBits.ReadWrite
         | Left err => println $ show err
       Right () <- mmap root 0x0200b000 0x0200b000 entryBits.ReadWrite
         | Left err => println $ show err
 
-      println "Map PLIC section"
       Right () <- idMapRange root 0x0c000000 0x0c002020 entryBits.ReadWrite
         | Left err => println $ show err
       Right () <- idMapRange root 0x0c200000 0x0c208000 entryBits.ReadWrite
         | Left err => println $ show err
 
-      println "Map virtio section"
       Right () <- idMapRange root 0x10001000 0x10008020 entryBits.ReadWrite
         | Left err => println $ show err
 
-      println "Finish initialising memory"
+      println "Memory initialized"
 
 
 %export "urefc:Main_runKInit"
