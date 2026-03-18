@@ -273,16 +273,77 @@ idMapRange : {numPages : Nat}
 idMapRange root start end bits = do
     let memaddr = start .&. complement (pageSize - 1)
         alignEnd = (end + pageSize - 1) .&. complement (pageSize - 1)
-        numKbPages = cast {to=Nat} $ toDouble (alignEnd - memaddr) / toDouble pageSize
-    mapAddr numKbPages memaddr
+    mapPages memaddr alignEnd
 
   where
-    mapAddr : Nat -> Bits64 -> Kernel numPages (Either AllocPagesErrors ())
-    mapAddr Z _ = pure (Right ())
-    mapAddr (S n) addr = do
-      res <- mmap root addr addr bits
-      case res of
-        Left err => pure (Left err)
-        Right () => mapAddr n (addr + pageSize)
+    makeEntry : Bits64 -> Bits64
+    makeEntry paddr =
+      let ppn2 = shiftR paddr 30 .&. 0x3ffffff
+          ppn1 = shiftR paddr 21 .&. 0x1ff
+          ppn0 = shiftR paddr 12 .&. 0x1ff
+      in shiftL ppn2 28 .|.
+         shiftL ppn1 19 .|.
+         shiftL ppn0 10 .|.
+         bits .|.
+         entryBits.Valid .|.
+         entryBits.Dirty .|.
+         entryBits.Access
+
+    -- Resolve a level: read entry, allocate page if not valid, return next table base
+    resolveLevel : HeapAddr -> Kernel numPages (Either AllocPagesErrors Bits64)
+    resolveLevel entryAddr = do
+      val <- read_heap_bits64 entryAddr
+      when ((val .&. entryBits.Valid) == 0) $ do
+        case isLT 1 numPages of
+          Yes prf => do
+            res <- zalloc @{prf} (mkNatPos 1)
+            case res of
+              Right page =>
+                write_heap_bits64 entryAddr (shiftR (getHeapAddr page) 2 .|. entryBits.Valid)
+              Left _ => pure ()
+          No _ => pure ()
+      val <- read_heap_bits64 entryAddr
+      if (val .&. entryBits.Valid) == 0
+        then pure (Left NoMemory)
+        else pure (Right (shiftL (val .&. complement 0x3ff) 2))
+
+    -- Fill level-0 entries within a single level-1 slot (same 2MB region)
+    fillL0 : Bits64 -> Bits64 -> Bits64 -> Kernel numPages (Either AllocPagesErrors ())
+    fillL0 l1Base addr alignEnd = do
+      if addr >= alignEnd
+        then pure (Right ())
+        else do
+          let vpn0 = shiftR addr 12 .&. 0x1ff
+          case mkHeapAddr (l1Base + vpn0 * 8) of
+            Nothing => pure (Left HeapOutOfBounds)
+            Just entryPtr => do
+              write_heap_bits64 entryPtr (makeEntry addr)
+              if vpn0 == 0x1ff
+                then pure (Right ()) -- crossed 2MB boundary, caller handles next
+                else fillL0 l1Base (addr + pageSize) alignEnd
+
+    -- Iterate over 2MB regions: resolve level-2 and level-1 once, then batch level-0
+    mapPages : Bits64 -> Bits64 -> Kernel numPages (Either AllocPagesErrors ())
+    mapPages addr alignEnd = do
+      if addr >= alignEnd
+        then pure (Right ())
+        else do
+          let vpn2 = shiftR addr 30 .&. 0x1ff
+              vpn1 = shiftR addr 21 .&. 0x1ff
+          case mkHeapAddr (getHeapAddr root + vpn2 * 8) of
+            Nothing => pure (Left HeapOutOfBounds)
+            Just entryPtr2 => do
+              Right l2Base <- resolveLevel entryPtr2
+                | Left err => pure (Left err)
+              case mkHeapAddr (l2Base + vpn1 * 8) of
+                Nothing => pure (Left HeapOutOfBounds)
+                Just entryPtr1 => do
+                  Right l1Base <- resolveLevel entryPtr1
+                    | Left err => pure (Left err)
+                  Right () <- fillL0 l1Base addr alignEnd
+                    | Left err => pure (Left err)
+                  -- Advance to the next 2MB boundary
+                  let next2MB = (addr + 0x200000) .&. complement (0x200000 - 1)
+                  mapPages next2MB alignEnd
 
 
