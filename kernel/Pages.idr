@@ -50,6 +50,48 @@ pageBits = MkPageBits {
   Last = 1 `shiftL` 1
 }
 
+-- MMU Entry Bits
+public export
+record EntryBits where
+  constructor MkEntryBits
+  Valid : Bits64
+  Read : Bits64
+  Write : Bits64
+  Execute : Bits64
+  User : Bits64
+  Global : Bits64
+  Access : Bits64
+  Dirty : Bits64
+
+  ReadWrite : Bits64
+  ReadExecute : Bits64
+  ReadWriteExecute : Bits64
+
+  UserReadWrite : Bits64
+  UserReadExecute : Bits64
+  UserReadWriteExecute : Bits64
+
+export
+entryBits : EntryBits
+entryBits = MkEntryBits {
+  Valid              = shiftL 1 0,
+  Read               = shiftL 1 1,
+  Write              = shiftL 1 2,
+  Execute            = shiftL 1 3,
+  User               = shiftL 1 4,
+  Global             = shiftL 1 5,
+  Access             = shiftL 1 6,
+  Dirty              = shiftL 1 7,
+
+  ReadWrite          = shiftL 1 1 .|. shiftL 1 2,
+  ReadExecute        = shiftL 1 1 .|. shiftL 1 3,
+  ReadWriteExecute   = shiftL 1 1 .|. shiftL 1 2 .|. shiftL 1 3,
+
+  UserReadWrite         = shiftL 1 1 .|. shiftL 1 2 .|. shiftL 1 4,
+  UserReadExecute       = shiftL 1 1 .|. shiftL 1 3 .|. shiftL 1 4,
+  UserReadWriteExecute  = shiftL 1 1 .|. shiftL 1 2 .|. shiftL 1 3 .|. shiftL 1 4
+}
+
 public export
 data AllocPagesErrors = NoMemory | HeapOutOfBounds
 
@@ -160,5 +202,87 @@ dealloc heapAddr = do
              No _    => pure ()
          else
            set pageTable i pageBits.Empty
-            
+
+export
+mmap : {numPages : Nat}
+    -> (root : HeapAddr)
+    -> (vaddr : Bits64)
+    -> (paddr : Bits64)
+    -> (bits : Bits64)
+    -> Kernel numPages (Either AllocPagesErrors ())
+mmap root vaddr paddr bits = do
+    let vpn2 = shiftR vaddr 30 .&. 0x1ff
+        vpn1 = shiftR vaddr 21 .&. 0x1ff
+        vpn0 = shiftR vaddr 12 .&. 0x1ff
+
+        ppn2 = shiftR paddr 30 .&. 0x3ffffff
+        ppn1 = shiftR paddr 21 .&. 0x1ff
+        ppn0 = shiftR paddr 12 .&. 0x1ff
+
+    case mkHeapAddr (getHeapAddr root + vpn2 * 8) of
+      Nothing => pure (Left HeapOutOfBounds)
+      Just entryPtr2 => do
+        res <- traverseLevel entryPtr2 vpn1
+        case res of
+          Left err => pure (Left err)
+          Right entryPtr1 => do
+            res <- traverseLevel entryPtr1 vpn0
+            case res of
+              Left err => pure (Left err)
+              Right entryPtr0 => do
+                let entry =
+                      shiftL ppn2 28 .|.
+                      shiftL ppn1 19 .|.
+                      shiftL ppn0 10 .|.
+                      bits .|.
+                      entryBits.Valid .|.
+                      entryBits.Dirty .|.
+                      entryBits.Access
+                write_heap_bits64 entryPtr0 entry
+                pure (Right ())
+
+  where
+    traverseLevel : HeapAddr -> Bits64 -> Kernel numPages (Either AllocPagesErrors HeapAddr)
+    traverseLevel entryAddr vpn = do
+      val <- read_heap_bits64 entryAddr
+      when ((val .&. entryBits.Valid) == 0) $ do
+        case isLT 1 numPages of
+          Yes prf => do
+            res <- zalloc @{prf} (mkNatPos 1)
+            case res of
+              Right page =>
+                write_heap_bits64 entryAddr (shiftR (getHeapAddr page) 2 .|. entryBits.Valid)
+              Left _ => pure ()
+          No _ => pure ()
+      val <- liftIO $ read_heap_bits64 entryAddr
+      if (val .&. entryBits.Valid) == 0
+        then pure (Left NoMemory)
+        else do
+          let nextTable = shiftL (val .&. complement 0x3ff) 2
+          case mkHeapAddr (nextTable + vpn * 8) of
+            Nothing => pure (Left HeapOutOfBounds)
+            Just addr => pure (Right addr)
+
+export
+idMapRange : {numPages : Nat}
+          -> (root : HeapAddr)
+          -> (start : Bits64)
+          -> (end : Bits64)
+          -> (bits : Bits64)
+          -> Kernel numPages (Either AllocPagesErrors ())
+idMapRange root start end bits = do
+    let memaddr = start .&. complement (pageSize - 1)
+        alignEnd = (end + pageSize - 1) .&. complement (pageSize - 1)
+        numKbPages = cast {to=Nat} $ toDouble (alignEnd - memaddr) / toDouble pageSize
+    mapAddr numKbPages memaddr
+
+  where
+    mapAddr : Nat -> Bits64 -> Kernel numPages (Either AllocPagesErrors ())
+    mapAddr Z _ = pure (Right ())
+    mapAddr (S n) addr = do
+      res <- mmap root addr addr bits
+      case res of
+        Left err => pure (Left err)
+        Right () => mapAddr n (addr + pageSize)
+
 

@@ -24,19 +24,23 @@ namespace HeapCon
   getHeapAddr (MkHeapAddr addr prf) = addr
 
 export
-write_heap_bits8 : HeapAddr -> Bits8 -> IO ()
+read_heap_bits64 : HasIO io => HeapAddr -> io Bits64
+read_heap_bits64 addr = primIO $ prim__deref_bits64 (getHeapAddr addr)
+
+export
+write_heap_bits8 : HasIO io => HeapAddr -> Bits8 -> io ()
 write_heap_bits8 addr val = primIO $ prim__set_bits8 (getHeapAddr addr) val
 
 export
-write_heap_bits16 : HeapAddr -> Bits16 -> IO ()
+write_heap_bits16 : HasIO io => HeapAddr -> Bits16 -> io ()
 write_heap_bits16 addr val = primIO $ prim__set_bits16 (getHeapAddr addr) val
 
 export
-write_heap_bits32 : HeapAddr -> Bits32 -> IO ()
+write_heap_bits32 : HasIO io => HeapAddr -> Bits32 -> io ()
 write_heap_bits32 addr val = primIO $ prim__set_bits32 (getHeapAddr addr) val
 
 export
-write_heap_bits64 : HeapAddr -> Bits64 -> IO ()
+write_heap_bits64 : HasIO io => HeapAddr -> Bits64 -> io ()
 write_heap_bits64 addr val = primIO $ prim__set_bits64 (getHeapAddr addr) val
 
 export
@@ -64,7 +68,7 @@ increment_heap_addr_bits64 addr =
   mkHeapAddr newAddr
 
 export
-zero_heap : HeapAddr -> Bits64 -> IO ()
+zero_heap : HasIO io => HeapAddr -> Bits64 -> io ()
 zero_heap addr n = do
   let _ = prim__memset (getHeapAddr addr) 0 n
   pure ()
