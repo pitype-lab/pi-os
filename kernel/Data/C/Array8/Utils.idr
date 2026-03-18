@@ -2,6 +2,7 @@ module Data.C.Array8.Utils
 
 import Data.C.Array8
 import public Data.Linear.Token
+import Data.Linear.ELift1
 import Data.Nat
 import Data.Array.Index
 
@@ -41,3 +42,51 @@ mapInPlace arr (S k) f t =
   let v # t := getNat arr k t
       _ # t := setNat arr k (f v) t
    in mapInPlace arr k f t
+
+||| Traverse the first m elements of an immutable array with an index-aware
+||| applicative action, discarding results. Mirrors traverseWithIndex from idris2-array.
+export
+traverseWithIndex_ :
+     {n : Nat}
+  -> {auto app : Applicative f}
+  -> (arr : CIArray8 n)
+  -> (m : Nat)
+  -> (0 _ : LTE m n)
+  => (Fin n -> Bits8 -> f ())
+  -> f ()
+traverseWithIndex_ arr 0     f = pure ()
+traverseWithIndex_ arr (S k) f =
+  traverseWithIndex_ arr k f *> f (natToFinLT k) (atNat arr k)
+
+||| Traverse the first m elements of an immutable array with an applicative
+||| action, discarding results.
+export
+traverse_ :
+     {n : Nat}
+  -> {auto app : Applicative f}
+  -> (arr : CIArray8 n)
+  -> (m : Nat)
+  -> (0 _ : LTE m n)
+  => (Bits8 -> f ())
+  -> f ()
+traverse_ arr m f = traverseWithIndex_ arr m (const f)
+
+||| Traverse all elements of an immutable array with an index-aware applicative action.
+export
+traverseWithIndexAll :
+     {n : Nat}
+  -> {auto app : Applicative f}
+  -> (arr : CIArray8 n)
+  -> (Fin n -> Bits8 -> f ())
+  -> f ()
+traverseWithIndexAll arr = traverseWithIndex_ arr n
+
+||| Traverse all elements of an immutable array with an applicative action.
+export
+traverseAll :
+     {n : Nat}
+  -> {auto app : Applicative f}
+  -> (arr : CIArray8 n)
+  -> (Bits8 -> f ())
+  -> f ()
+traverseAll arr = traverse_ arr n

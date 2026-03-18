@@ -5,14 +5,10 @@ import public Control.Monad.Reader
 import public Data.Linear.Token
 
 public export
-PageTable : Type
-PageTable = (n ** CArray8 World n)
-
-public export
-Kernel : Type -> Type
-Kernel = ReaderT PageTable IO
+Kernel : Nat -> Type -> Type
+Kernel n = ReaderT (CArray8 World n) IO
 
 export
-runKernel : PageTable -> Kernel () -> IO ()
+runKernel : CArray8 World n -> Kernel n () -> IO ()
 runKernel pageTable app = runReaderT pageTable app
 
