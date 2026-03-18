@@ -65,7 +65,7 @@ initPageTable = do
     arr <- malloc1 numPages
     pure arr
 
-  -- DISCLAIMER This utterly usafe and the only reason to do so is because calloc1 is currently broken anf of effeciancy 
+  -- DISCLAIMER This utterly unsafe and the only reason to do so is because calloc1 is currently broken anf of effeciancy 
   -- TODO : Replace that with calloc1
   let ptr = anyPtrToBits64 (unsafeUnwrap arr)
   zero ptr (cast numPages `div` 8)
