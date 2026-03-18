@@ -61,7 +61,7 @@ kinit = do
       Right () <- idMapRange root 0x10001000 0x10008020 entryBits.ReadWrite
         | Left err => println $ show err
 
-      println "Memory initialized"
+      pure ()
 
 
 %export "urefc:Main_runKInit"
