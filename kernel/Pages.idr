@@ -54,7 +54,7 @@ Show AllocPagesErrors where
   show HeapOutOfBounds = "HeapOutOfBounds"
 
 export
-initPageTable : IO (n ** CArray8 World n)
+initPageTable : IO (numPages ** CArray8 World numPages)
 initPageTable = do
   arr <- runIO $ T1.do
     arr <- malloc1 numPages
@@ -63,17 +63,17 @@ initPageTable = do
   pure (numPages ** arr)
 
 export
-alloc : {n : Nat} -> (size : NatPos) -> (0 _ : LT (fst size) n) => Kernel n (Either AllocPagesErrors HeapAddr)
+alloc : {numPages : Nat} -> (size : NatPos) -> (0 _ : LT (fst size) numPages) => Kernel numPages (Either AllocPagesErrors HeapAddr)
 alloc (Element(S last) _) = do
   let size = S (last)
   pageTable <- ask
   res <- runIO $ withIArray pageTable $ \iPageTable => 
-    case isLT (size + 0) n of
+    case isLT (size + 0) numPages of
       Yes prf => getFirstFreeSpace @{prf} iPageTable 0 size
       No _    => Nothing
   case res of
     Just location => 
-      case isLT (last + location) n of
+      case isLT (last + location) numPages of
         Yes prfK => do
           let addr = alignVal (heapStart + (cast location * pageSize)) pageOrder
           case mkHeapAddr addr of
@@ -87,10 +87,10 @@ alloc (Element(S last) _) = do
     Nothing => pure (Left NoMemory)
 
   where 
-    isFree : (pageTable : CIArray8 n) 
+    isFree : (pageTable : CIArray8 numPages) 
           -> (location : Nat) 
           -> (size : Nat) 
-          -> (0 _ : LT (size + location) n) 
+          -> (0 _ : LT (size + location) numPages) 
           => Bool
     isFree pageTable location Z = 
       atNat pageTable location == pageBits.Empty
@@ -99,10 +99,10 @@ alloc (Element(S last) _) = do
         then isFree @{lteSuccLeft prf} pageTable location k
         else False
 
-    markTaken : (pageTable : CArray8 World n)
+    markTaken : (pageTable : CArray8 World numPages)
           -> (location : Nat)
           -> (size : Nat)
-          -> (0 _ : LT (size + location) n)
+          -> (0 _ : LT (size + location) numPages)
           => F1' World
     markTaken pageTable location Z = 
       setNat pageTable location pageBits.Taken
@@ -110,15 +110,15 @@ alloc (Element(S last) _) = do
       setNat pageTable (S k + location) pageBits.Taken
       markTaken @{lteSuccLeft prf} pageTable location k
 
-    getFirstFreeSpace : (pageTable : CIArray8 n) 
+    getFirstFreeSpace : (pageTable : CIArray8 numPages) 
           -> (location : Nat) 
           -> (size : Nat) 
-          -> (0 _ : LT (size + location) n) 
+          -> (0 _ : LT (size + location) numPages) 
           => Maybe Nat
     getFirstFreeSpace pageTable location size =
       if isFree pageTable location size
         then Just location
-        else case isLT (size + S location) n of
+        else case isLT (size + S location) numPages of
                Yes prf => getFirstFreeSpace @{prf} pageTable (S location) size
                No _    => Nothing
 
