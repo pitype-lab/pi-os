@@ -276,19 +276,6 @@ idMapRange root start end bits = do
     mapPages memaddr alignEnd
 
   where
-    makeEntry : Bits64 -> Bits64
-    makeEntry paddr =
-      let ppn2 = shiftR paddr 30 .&. 0x3ffffff
-          ppn1 = shiftR paddr 21 .&. 0x1ff
-          ppn0 = shiftR paddr 12 .&. 0x1ff
-      in shiftL ppn2 28 .|.
-         shiftL ppn1 19 .|.
-         shiftL ppn0 10 .|.
-         bits .|.
-         entryBits.Valid .|.
-         entryBits.Dirty .|.
-         entryBits.Access
-
     -- Resolve a level: read entry, allocate page if not valid, return next table base
     resolveLevel : HeapAddr -> Kernel numPages (Either AllocPagesErrors Bits64)
     resolveLevel entryAddr = do
@@ -307,20 +294,17 @@ idMapRange root start end bits = do
         then pure (Left NoMemory)
         else pure (Right (shiftL (val .&. complement 0x3ff) 2))
 
-    -- Fill level-0 entries within a single level-1 slot (same 2MB region)
-    fillL0 : Bits64 -> Bits64 -> Bits64 -> Kernel numPages (Either AllocPagesErrors ())
-    fillL0 l1Base addr alignEnd = do
-      if addr >= alignEnd
-        then pure (Right ())
+    -- Fill level-0 entries within a single level-1 slot (same 2MB region).
+    -- entryBase has PPN[2], PPN[1], flags precomputed — only PPN[0] varies.
+    -- l1Base is the raw base address of the L0 table (already validated).
+    -- vpn0 is the starting VPN[0] index, count is how many entries to fill.
+    fillL0 : (l1Base : Bits64) -> (entryBase : Bits64) -> (vpn0 : Bits64) -> (count : Bits64) -> Kernel numPages ()
+    fillL0 l1Base entryBase vpn0 count = do
+      if count == 0
+        then pure ()
         else do
-          let vpn0 = shiftR addr 12 .&. 0x1ff
-          case mkHeapAddr (l1Base + vpn0 * 8) of
-            Nothing => pure (Left HeapOutOfBounds)
-            Just entryPtr => do
-              write_heap_bits64 entryPtr (makeEntry addr)
-              if vpn0 == 0x1ff
-                then pure (Right ()) -- crossed 2MB boundary, caller handles next
-                else fillL0 l1Base (addr + pageSize) alignEnd
+          primIO $ prim__set_bits64 (l1Base + vpn0 * 8) (entryBase .|. shiftL vpn0 10)
+          fillL0 l1Base entryBase (vpn0 + 1) (count - 1)
 
     -- Iterate over 2MB regions: resolve level-2 and level-1 once, then batch level-0
     mapPages : Bits64 -> Bits64 -> Kernel numPages (Either AllocPagesErrors ())
@@ -330,6 +314,20 @@ idMapRange root start end bits = do
         else do
           let vpn2 = shiftR addr 30 .&. 0x1ff
               vpn1 = shiftR addr 21 .&. 0x1ff
+              vpn0Start = shiftR addr 12 .&. 0x1ff
+              -- How many pages until end of this 2MB region or end of range
+              next2MB = (addr + 0x200000) .&. complement (0x200000 - 1)
+              regionEnd = if next2MB < alignEnd then next2MB else alignEnd
+              count = shiftR (regionEnd - addr) 12
+              -- Precompute entry bits: PPN[2], PPN[1], flags are constant within 2MB
+              ppn2 = shiftR addr 30 .&. 0x3ffffff
+              ppn1 = shiftR addr 21 .&. 0x1ff
+              entryBase = shiftL ppn2 28 .|.
+                          shiftL ppn1 19 .|.
+                          bits .|.
+                          entryBits.Valid .|.
+                          entryBits.Dirty .|.
+                          entryBits.Access
           case mkHeapAddr (getHeapAddr root + vpn2 * 8) of
             Nothing => pure (Left HeapOutOfBounds)
             Just entryPtr2 => do
@@ -340,10 +338,7 @@ idMapRange root start end bits = do
                 Just entryPtr1 => do
                   Right l1Base <- resolveLevel entryPtr1
                     | Left err => pure (Left err)
-                  Right () <- fillL0 l1Base addr alignEnd
-                    | Left err => pure (Left err)
-                  -- Advance to the next 2MB boundary
-                  let next2MB = (addr + 0x200000) .&. complement (0x200000 - 1)
-                  mapPages next2MB alignEnd
+                  fillL0 l1Base entryBase vpn0Start count
+                  mapPages regionEnd alignEnd
 
 
