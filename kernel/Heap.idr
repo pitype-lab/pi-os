@@ -62,3 +62,9 @@ increment_heap_addr_bits64 : HeapAddr -> Maybe HeapAddr
 increment_heap_addr_bits64 addr = 
   let newAddr = getHeapAddr addr + 8 in
   mkHeapAddr newAddr
+
+export
+zero_heap : HeapAddr -> Bits64 -> IO ()
+zero_heap addr n = do
+  let _ = prim__memset (getHeapAddr addr) 0 n
+  pure ()

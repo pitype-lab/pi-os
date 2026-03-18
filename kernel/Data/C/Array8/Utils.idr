@@ -1,12 +1,21 @@
 module Data.C.Array8.Utils
 
 import Data.C.Array8
+import Data.C.Extra
 import public Data.Linear.Token
 import Data.Linear.ELift1
 import Data.Nat
 import Data.Array.Index
+import Syntax.T1
 
 %default total
+
+||| Fill all bytes of a mutable array with a value using C memset (single FFI call).
+export
+memset1 : (arr : CArray8 World n) -> (n : Nat) -> Bits8 -> F1' World
+memset1 arr n v t =
+  let _ = prim__memset (anyPtrToBits64 $ unsafeUnwrap arr) v (cast n)
+  in () # t
 
 ||| Fill all `m` elements of a mutable array with a constant value.
 export

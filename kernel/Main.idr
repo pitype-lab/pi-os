@@ -18,6 +18,7 @@ import Uart
 kinit : {numPages : Nat} -> Kernel numPages ()
 kinit = do
   println "Init PI OS memory"
+  println $ show numPages
   case isLT 4 numPages of
     Yes prf => do
       (Right heapAddr) <- zalloc @{prf} (mkNatPos 4)

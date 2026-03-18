@@ -35,3 +35,7 @@ prim__set_bits32 : Bits64 -> Bits32 -> PrimIO ()
 export
 %foreign "C:cptr_set_bits64, cptr-idris"
 prim__set_bits64 : Bits64 -> Bits64 -> PrimIO ()
+
+export
+%foreign "C:memset"
+prim__memset : Bits64 -> Bits8 -> Bits64 -> Bits64
