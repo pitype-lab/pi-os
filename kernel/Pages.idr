@@ -64,7 +64,7 @@ initPageTable = do
 
 export
 alloc : NatPos -> Kernel (Either AllocPagesErrors HeapAddr)
-alloc size = do
+alloc (Element size _) = do
   (n ** arr) <- ask
   let i = 5
   case isLTE (S i) n of
