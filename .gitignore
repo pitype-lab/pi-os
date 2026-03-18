@@ -1,0 +1,6 @@
+.aider*
+*.o
+*.elf
+*.a
+build/
+tmp/
