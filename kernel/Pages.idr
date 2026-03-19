@@ -111,7 +111,7 @@ initPageTable = do
   pure (numPages ** arr)
 
 export
-alloc : {numPages : Nat} -> (size : NatPos) -> (0 _ : LT (fst size) numPages) => Kernel numPages (Either AllocPagesErrors HeapAddr)
+alloc : {numPages : Nat} -> (size : NatPos) -> (0 _ : LT (fst size) numPages) => InitKernel numPages (Either AllocPagesErrors HeapAddr)
 alloc (Element(S last) _) = do
   let size = S (last)
   pageTable <- ask
@@ -169,7 +169,7 @@ alloc (Element(S last) _) = do
                No _    => Nothing
 
 export
-zalloc : {numPages : Nat} -> (size : NatPos) -> (0 _ : LT (fst size) numPages) => Kernel numPages (Either AllocPagesErrors HeapAddr)
+zalloc : {numPages : Nat} -> (size : NatPos) -> (0 _ : LT (fst size) numPages) => InitKernel numPages (Either AllocPagesErrors HeapAddr)
 zalloc size = do
   res <- alloc size
   case res of
@@ -180,12 +180,12 @@ zalloc size = do
     Left err => pure (Left err)
 
 export
-dealloc : {numPages : Nat} -> HeapAddr -> Kernel numPages ()
+dealloc : {numPages : Nat} -> HeapAddr -> InitKernel numPages ()
 dealloc heapAddr = do
   let addr = getHeapAddr heapAddr
       location : Nat = cast $ toDouble (addr - allocStart) / toDouble pageSize
   println $ show location
-  pageTable <- ask 
+  pageTable <- ask
   case isLT location numPages of
     Yes prf => runIO $ free pageTable (natToFinLT location)
     No _    => pure ()
@@ -206,12 +206,12 @@ dealloc heapAddr = do
 
 export
 mmap : {numPages : Nat}
-    -> (root : HeapAddr)
     -> (vaddr : Bits64)
     -> (paddr : Bits64)
     -> (bits : Bits64)
     -> Kernel numPages (Either AllocPagesErrors ())
-mmap root vaddr paddr bits = do
+mmap vaddr paddr bits = do
+    root <- getRoot
     let vpn2 = shiftR vaddr 30 .&. 0x1ff
         vpn1 = shiftR vaddr 21 .&. 0x1ff
         vpn0 = shiftR vaddr 12 .&. 0x1ff
@@ -249,7 +249,7 @@ mmap root vaddr paddr bits = do
       when ((val .&. entryBits.Valid) == 0) $ do
         case isLT 1 numPages of
           Yes prf => do
-            res <- zalloc @{prf} (mkNatPos 1)
+            res <- liftInit $ zalloc @{prf} (mkNatPos 1)
             case res of
               Right page =>
                 write_heap_bits64 entryAddr (shiftR (getHeapAddr page) 2 .|. entryBits.Valid)
@@ -266,12 +266,11 @@ mmap root vaddr paddr bits = do
 
 export
 idMapRange : {numPages : Nat}
-          -> (root : HeapAddr)
           -> (start : Bits64)
           -> (end : Bits64)
           -> (bits : Bits64)
           -> Kernel numPages (Either AllocPagesErrors ())
-idMapRange root start end bits = do
+idMapRange start end bits = do
     let memaddr = start .&. complement (pageSize - 1)
         alignEnd = (end + pageSize - 1) .&. complement (pageSize - 1)
     mapPages memaddr alignEnd
@@ -284,7 +283,7 @@ idMapRange root start end bits = do
       when ((val .&. entryBits.Valid) == 0) $ do
         case isLT 1 numPages of
           Yes prf => do
-            res <- zalloc @{prf} (mkNatPos 1)
+            res <- liftInit $ zalloc @{prf} (mkNatPos 1)
             case res of
               Right page =>
                 write_heap_bits64 entryAddr (shiftR (getHeapAddr page) 2 .|. entryBits.Valid)
@@ -310,6 +309,7 @@ idMapRange root start end bits = do
     -- Iterate over 2MB regions: resolve level-2 and level-1 once, then batch level-0
     mapPages : Bits64 -> Bits64 -> Kernel numPages (Either AllocPagesErrors ())
     mapPages addr alignEnd = do
+      root <- getRoot
       if addr >= alignEnd
         then pure (Right ())
         else do
@@ -330,16 +330,16 @@ idMapRange root start end bits = do
                           entryBits.Dirty .|.
                           entryBits.Access
           case mkHeapAddr (getHeapAddr root + vpn2 * 8) of
-            Nothing => pure (Left HeapOutOfBounds)
-            Just entryPtr2 => do
-              Right l2Base <- resolveLevel entryPtr2
-                | Left err => pure (Left err)
-              case mkHeapAddr (l2Base + vpn1 * 8) of
-                Nothing => pure (Left HeapOutOfBounds)
-                Just entryPtr1 => do
-                  Right l1Base <- resolveLevel entryPtr1
-                    | Left err => pure (Left err)
-                  fillL0 l1Base entryBase vpn0Start count
-                  mapPages regionEnd alignEnd
+              Nothing => pure (Left HeapOutOfBounds)
+              Just entryPtr2 => do
+                Right l2Base <- resolveLevel entryPtr2
+                  | Left err => pure (Left err)
+                case mkHeapAddr (l2Base + vpn1 * 8) of
+                  Nothing => pure (Left HeapOutOfBounds)
+                  Just entryPtr1 => do
+                    Right l1Base <- resolveLevel entryPtr1
+                      | Left err => pure (Left err)
+                    fillL0 l1Base entryBase vpn0Start count
+                    mapPages regionEnd alignEnd
 
 

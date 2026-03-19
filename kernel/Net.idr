@@ -14,25 +14,25 @@ import VirtIO
 
 -- Allocate a page and identity-map it
 export
-allocAndMap : {numPages : Nat} -> (0 _ : LT 1 numPages) => HeapAddr -> Kernel numPages (Either AllocPagesErrors HeapAddr)
-allocAndMap root = do
-  Right page <- zalloc (mkNatPos 1)
+allocAndMap : {numPages : Nat} -> (0 _ : LT 1 numPages) => Kernel numPages (Either AllocPagesErrors HeapAddr)
+allocAndMap = do
+  Right page <- liftInit $ zalloc (mkNatPos 1)
     | Left err => pure (Left err)
-  Right () <- mmap root (getHeapAddr page) (getHeapAddr page) entryBits.ReadWrite
+  Right () <- mmap (getHeapAddr page) (getHeapAddr page) entryBits.ReadWrite
     | Left err => pure (Left err)
   pure (Right page)
 
 export
-setupNetwork : {numPages : Nat} -> HeapAddr -> Bits64 -> Kernel numPages ()
-setupNetwork root addr = do
+setupNetwork : {numPages : Nat} -> Bits64 -> Kernel numPages ()
+setupNetwork addr = do
   case isLT 1 numPages of
     No _ => println "Page table too small for network setup"
     Yes prf => do
       -- Allocate 1 page for the virtqueue (desc + avail + used contiguous)
       -- and 1 page for the RX buffer
-      Right rx_vq     <- allocAndMap @{prf} root
+      Right rx_vq     <- allocAndMap @{prf}
         | Left err => println $ "Net: alloc rx_vq failed: " ++ show err
-      Right rx_buffer <- allocAndMap @{prf} root
+      Right rx_buffer <- allocAndMap @{prf}
         | Left err => println $ "Net: alloc rx_buffer failed: " ++ show err
 
       println "Setup network"
@@ -51,7 +51,7 @@ setupNetwork root addr = do
       --     used  = align(base + 16 + 4 + 2, 4096) = base + 4096 if base is page-aligned
       --   So used ring needs to be on the NEXT page. We need 2 pages for the vq.
 
-      Right rx_used_pg <- allocAndMap @{prf} root
+      Right rx_used_pg <- allocAndMap @{prf}
         | Left err => println $ "Net: alloc rx_used failed: " ++ show err
 
       let vq     = getHeapAddr rx_vq
