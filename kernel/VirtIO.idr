@@ -48,7 +48,7 @@ probeAddrs addr initVirtIO =
         println "Not virtio"
 
       if deviceid == 0
-        then println "Not connected"
+        then pure ()
         else setup deviceid addr initVirtIO
 
       probeAddrs (addr + MMIO_VIRTIO_STRIDE) initVirtIO
