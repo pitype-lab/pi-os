@@ -19,7 +19,7 @@ kernel:
 	$(CC) $(CFLAGS) build/exec/kernel.c -c -o build/exec/kernel.o
 
 watch:
-	find ./ -iname "*.idr" | entr -sndc 'make && ./boot.bash'
+	find ./ -iname "*.idr" | entr -snr 'make && ./boot.bash'
 
 clean:
 	$(MAKE) clean -C boot
