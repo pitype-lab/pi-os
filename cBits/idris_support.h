@@ -29,12 +29,6 @@ char* idris2_malloc_start();
 char* idris2_heap_start();
 size_t idris2_heap_size();
 
-// Kernel init
-Value *PrimIO_unsafePerformIO(Value * var_0);
-Value *Main_runKInit(Value * var_0);
-size_t kinit();
-void kinit_hart(size_t hartid);
-
 // utils
 void print(char *str);
 char* itoa(int value, char* result, int base);

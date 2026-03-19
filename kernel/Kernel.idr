@@ -11,4 +11,3 @@ Kernel n = ReaderT (CArray8 World n) IO
 export
 runKernel : CArray8 World n -> Kernel n () -> IO ()
 runKernel pageTable app = runReaderT pageTable app
-

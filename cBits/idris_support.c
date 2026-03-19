@@ -28,40 +28,23 @@ char* idris2_heap_start() { return HEAP_START; }
 size_t idris2_heap_size() { return HEAP_SIZE; }
 
 
-// Kernel init
-uint64_t runKInit() {
-  Value *closure_0 = (Value *)idris2_mkClosure((Value *(*)())Main_runKInit, 1, 1);
-                                                            
-  Value * var_0 = closure_0;                               
-  Value *closure_1 = (Value *)idris2_mkClosure((Value *(*)())PrimIO_unsafePerformIO, 1, 1);
-  ((Value_Closure*)closure_1)->args[0] = var_0;
 
-	Value_Integer *ret = (Value_Integer *)idris2_trampoline(closure_0);
-
-  uint64_t satp = (uint64_t)mpz_get_ui(ret->i);
-
-	return (uint64_t)satp;
-}
+Value *Trap_m_trap(Value *, Value *, Value *, Value *, Value *);
+Value *PrimIO_unsafePerformIO(Value *);
 
 uint64_t m_trap(size_t epc, size_t tval, size_t cause, size_t hart, size_t status) {
-  /*Value *var_0 = (Value *)idris2_mkClosure((Value *(*)())PrimIO_unsafePerformIO, 1, 1);
+  Value *unsafeIO = (Value *)idris2_mkClosure((Value *(*)())PrimIO_unsafePerformIO, 1, 1);
 
-	Value_Integer *var_1 = idris2_mkInteger();
-	mpz_set_si(var_1->i, epc);
-	Value_Integer *var_2 = idris2_mkInteger();
-	mpz_set_si(var_2->i, tval);
-	Value_Integer *var_3 = idris2_mkInteger();
-	mpz_set_si(var_3->i, cause);
-	Value_Integer *var_4 = idris2_mkInteger();
-	mpz_set_si(var_4->i, hart);
-	Value_Integer *var_5 = idris2_mkInteger();
-	mpz_set_si(var_5->i, status);
+  Value *var_epc    = idris2_mkBits64(epc);
+  Value *var_tval   = idris2_mkBits64(tval);
+  Value *var_cause  = idris2_mkBits64(cause);
+  Value *var_hart   = idris2_mkBits64(hart);
+  Value *var_status = idris2_mkBits64(status);
 
-  Value *var_6 = idris2_trampoline(Trap_m_trap(var_1, var_2, var_3, var_4, var_5));
-  Value_Integer *ret = (Value_Integer *)idris2_apply_closure(var_6, idris2_newReference(var_0));
+  Value *ioAction = idris2_trampoline(Trap_m_trap(var_epc, var_tval, var_cause, var_hart, var_status));
+  Value *result = idris2_apply_closure(ioAction, idris2_newReference(unsafeIO));
 
- 	return (uint64_t)mpz_get_ui(ret->i); */
-  return 0;
+  return (uint64_t)idris2_vp_to_Bits64(result);
 }
 
 // utils

@@ -31,7 +31,8 @@ numPages = cast $ toDouble heapSize / toDouble pageSize
 alignVal : Bits64 -> Fin 64 -> Bits64
 alignVal val order = 
   let o = 1  `shiftL` order
-  in (val + o) .&. complement o
+      mask = o - 1
+  in (val + mask) .&. complement mask
 
 allocStart : Bits64
 allocStart = alignVal heapStart pageOrder
