@@ -27,7 +27,11 @@ char* idris2_malloc_start() { return MALLOC_START; }
 char* idris2_heap_start() { return HEAP_START; }
 size_t idris2_heap_size() { return HEAP_SIZE; }
 
-
+// Pointer to net device state page (heap-allocated, single 8-byte aligned global)
+// Layout: offset 0 = base (u64), offset 8 = avail addr (u64), offset 16 = avail idx (u16)
+static uint64_t net_state_addr = 0;
+uint64_t net_state_get_addr()                 { return net_state_addr; }
+void     net_state_set_addr(uint64_t addr)    { net_state_addr = addr; }
 
 Value *Trap_m_trap(Value *, Value *, Value *, Value *, Value *);
 Value *PrimIO_unsafePerformIO(Value *);
@@ -46,6 +50,22 @@ uint64_t m_trap(size_t epc, size_t tval, size_t cause, size_t hart, size_t statu
 
   return (uint64_t)idris2_vp_to_Bits64(result);
 }
+
+// Virtio net device state (shared between setupNetwork and IRQ handler)
+uint64_t net_dev_base = 0;
+uint64_t net_dev_avail = 0;
+uint16_t net_dev_avail_idx = 0;
+
+/*void net_dev_set(uint64_t base, uint64_t avail, uint16_t idx) {
+    net_dev_base = base;
+    net_dev_avail = avail;
+    net_dev_avail_idx = idx;
+}
+
+uint64_t net_dev_get_base()  { return net_dev_base; }
+uint64_t net_dev_get_avail() { return net_dev_avail; }
+uint16_t net_dev_get_avail_idx() { return net_dev_avail_idx; }
+void     net_dev_set_avail_idx(uint16_t idx) { net_dev_avail_idx = idx; } */
 
 // utils
 

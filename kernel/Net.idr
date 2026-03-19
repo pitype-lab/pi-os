@@ -12,6 +12,44 @@ import Prelude.Extra.Num
 import Uart
 import VirtIO
 
+-- A single C global pointer to a heap-allocated state page.
+-- Layout at that page:
+--   offset 0:  base address (Bits64)
+--   offset 8:  avail ring address (Bits64)
+--   offset 16: avail ring index (Bits16)
+%foreign "C:net_state_get_addr"
+prim__net_state_get_addr : PrimIO Bits64
+
+%foreign "C:net_state_set_addr"
+prim__net_state_set_addr : Bits64 -> PrimIO ()
+
+-- Handle a virtio-net interrupt: ack, recycle RX buffer, notify device
+export
+handleNetIrq : IO ()
+handleNetIrq = do
+  stateAddr <- primIO prim__net_state_get_addr
+  if stateAddr == 0
+    then pure ()
+    else do
+      base  <- primIO $ prim__deref_bits64 stateAddr
+      avail <- primIO $ prim__deref_bits64 (stateAddr + 8)
+      idx   <- primIO $ prim__deref_bits16 (stateAddr + 16)
+
+      -- 1. Ack the virtio interrupt
+      isr <- primIO $ prim__deref_bits32 (base + 0x60)
+      primIO $ prim__set_bits32 (base + 0x64) isr
+
+      -- 2. Recycle RX descriptor
+      let newIdx = idx + 1
+      primIO $ prim__set_bits16 (avail + 4) 0       -- ring[0] = descriptor 0
+      primIO $ prim__set_bits16 (avail + 2) newIdx   -- bump avail idx
+
+      -- 3. Notify device
+      primIO $ prim__set_bits32 (base + 0x50) 0
+
+      -- 4. Update index in state page
+      primIO $ prim__set_bits16 (stateAddr + 16) newIdx
+
 -- Allocate a page and identity-map it
 export
 allocAndMap : {numPages : Nat} -> (0 _ : LT 1 numPages) => Kernel numPages (Either AllocPagesErrors HeapAddr)
@@ -28,8 +66,6 @@ setupNetwork addr = do
   case isLT 1 numPages of
     No _ => println "Page table too small for network setup"
     Yes prf => do
-      -- Allocate 1 page for the virtqueue (desc + avail + used contiguous)
-      -- and 1 page for the RX buffer
       Right rx_vq     <- allocAndMap @{prf}
         | Left err => println $ "Net: alloc rx_vq failed: " ++ show err
       Right rx_buffer <- allocAndMap @{prf}
@@ -37,96 +73,63 @@ setupNetwork addr = do
 
       println "Setup network"
 
-      -- Layout within the single virtqueue page (contiguous, v1 legacy):
-      --   offset 0:   descriptor table (16 bytes per entry, 1 entry = 16 bytes)
-      --   offset 16:  available ring (flags:2 + idx:2 + ring[1]:2 + used_event:2 = 8 bytes)
-      --   offset 4096-8: used ring at end of page (flags:2 + idx:2 + elem[1]:{id:4,len:4} = 12 bytes)
-      --   Actually for v1 legacy, the layout is computed from QueuePFN:
-      --     desc starts at QueuePFN * page_size
-      --     avail starts at desc + 16 * queue_size  (= desc + 16 for size=1)
-      --     used starts at align(avail + 4 + 2 * queue_size, 4096)
-      --   With queue_size=1, page_size=4096:
-      --     desc  = base + 0
-      --     avail = base + 16
-      --     used  = align(base + 16 + 4 + 2, 4096) = base + 4096 if base is page-aligned
-      --   So used ring needs to be on the NEXT page. We need 2 pages for the vq.
-
       Right rx_used_pg <- allocAndMap @{prf}
         | Left err => println $ "Net: alloc rx_used failed: " ++ show err
 
+      -- Allocate a state page for the IRQ handler
+      Right statePg <- allocAndMap @{prf}
+        | Left err => println $ "Net: alloc state page failed: " ++ show err
+
       let vq     = getHeapAddr rx_vq
           buffer = getHeapAddr rx_buffer
-          desc   = vq            -- offset 0
-          avail  = vq + 16       -- right after 1 descriptor
-          used   = getHeapAddr rx_used_pg  -- next page-aligned address
+          desc   = vq
+          avail  = vq + 16
+          used   = getHeapAddr rx_used_pg
+          state  = getHeapAddr statePg
 
-      ---------------------------------------------------------
-      -- STATUS register @ base + 0x70
-      ---------------------------------------------------------
       let statusReg = addr + MMIO_VIRTIO_STATUS
 
       -- RESET
       primIO $ prim__set_bits32 statusReg 0
-      -- ACK (1)
+      -- ACK
       primIO $ prim__set_bits32 statusReg 1
-      -- DRIVER (1 | 2) = 3
+      -- DRIVER
       primIO $ prim__set_bits32 statusReg 3
 
-      -- Skip features negotiation (v1 legacy, same as asm-os)
-
-      ---------------------------------------------------------
-      -- Select queue 0 (RX) : QUEUE_SEL @ base + 0x30
-      ---------------------------------------------------------
+      -- Select queue 0
       primIO $ prim__set_bits32 (addr + 0x30) 0
-
-      ---------------------------------------------------------
-      -- Set GuestPageSize @ base + 0x28 = 4096 (required for v1 legacy)
-      ---------------------------------------------------------
+      -- GuestPageSize
       primIO $ prim__set_bits32 (addr + 0x28) 4096
-
-      ---------------------------------------------------------
-      -- Set queue size = 1 : QUEUE_NUM @ base + 0x38
-      ---------------------------------------------------------
+      -- Queue size
       primIO $ prim__set_bits32 (addr + 0x38) 1
 
-      ---------------------------------------------------------
       -- Descriptor 0
-      ---------------------------------------------------------
-      -- desc[0].addr (8 bytes at offset 0)
       primIO $ prim__set_bits64 desc buffer
-      -- desc[0].len (4 bytes at offset 8)
       primIO $ prim__set_bits32 (desc + 8) 2048
-      -- desc[0].flags (2 bytes at offset 12) = VIRTQ_DESC_F_WRITE
       primIO $ prim__set_bits16 (desc + 12) 2
-      -- desc[0].next (2 bytes at offset 14)
       primIO $ prim__set_bits16 (desc + 14) 0
 
-      ---------------------------------------------------------
-      -- Available ring (contiguous after desc)
-      ---------------------------------------------------------
-      -- flags (2 bytes)
+      -- Available ring
       primIO $ prim__set_bits16 avail 0
-      -- idx (2 bytes)
       primIO $ prim__set_bits16 (avail + 2) 1
-      -- ring[0] (2 bytes)
       primIO $ prim__set_bits16 (avail + 4) 0
 
-      ---------------------------------------------------------
-      -- Used ring (on separate page, page-aligned)
-      ---------------------------------------------------------
-      -- flags (2 bytes)
+      -- Used ring
       primIO $ prim__set_bits16 used 0
-      -- idx (2 bytes)
       primIO $ prim__set_bits16 (used + 2) 0
 
-      ---------------------------------------------------------
-      -- QueuePFN @ base + 0x40 = physical_address / page_size
-      ---------------------------------------------------------
+      -- QueuePFN
       primIO $ prim__set_bits32 (addr + 0x40) (cast $ shiftR vq 12)
 
-      ---------------------------------------------------------
-      -- DRIVER_OK (1 | 2 | 4) = 7
-      ---------------------------------------------------------
+      -- DRIVER_OK
       primIO $ prim__set_bits32 statusReg 7
+
+      -- Write state page: base, avail addr, avail idx
+      primIO $ prim__set_bits64 state addr
+      primIO $ prim__set_bits64 (state + 8) avail
+      primIO $ prim__set_bits16 (state + 16) 1
+
+      -- Register state page address in C global
+      primIO $ prim__net_state_set_addr state
 
       println "Virtio network setup complete."
