@@ -27,11 +27,12 @@ char* idris2_malloc_start() { return MALLOC_START; }
 char* idris2_heap_start() { return HEAP_START; }
 size_t idris2_heap_size() { return HEAP_SIZE; }
 
-// Pointer to net device state page (heap-allocated, single 8-byte aligned global)
-// Layout: offset 0 = base (u64), offset 8 = avail addr (u64), offset 16 = avail idx (u16)
-static uint64_t net_state_addr = 0;
-uint64_t net_state_get_addr()                 { return net_state_addr; }
-void     net_state_set_addr(uint64_t addr)    { net_state_addr = addr; }
+// Read mscratch — only callable from M-mode (i.e., from within the trap handler)
+uint64_t read_mscratch() {
+    uint64_t val;
+    asm volatile("csrr %0, mscratch" : "=r"(val));
+    return val;
+}
 
 Value *Trap_m_trap(Value *, Value *, Value *, Value *, Value *);
 Value *PrimIO_unsafePerformIO(Value *);

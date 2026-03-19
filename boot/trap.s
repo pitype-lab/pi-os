@@ -2,15 +2,24 @@
 .global m_trap_vector
 .align 4
 m_trap_vector:
+  # Fast path: ecall from S-mode (cause 9) to set mscratch
+  csrr  t0, mcause
+  li    t1, 9
+  bne   t0, t1, 1f
+  # ecall from S-mode: mscratch = a0, mepc += 4
+  csrw  mscratch, a0
+  csrr  t0, mepc
+  addi  t0, t0, 4
+  csrw  mepc, t0
+  mret
+1:
+
   # Enable FPU
-  csrr  t0, mstatus       # Read mstatus
+  csrr  t0, mstatus
 	li    t1, (1 << 13)     # FS = 01 (Initial state)
 	or    t0, t0, t1
-	csrw  mstatus, t0       # Write back to enable FPU
+	csrw  mstatus, t0
 
-	# Get ready to go into Rust (trap.rs)
-	# We don't want to write into the user's stack or whomever
-	# messed with us here.
 	csrr	a0, mepc
 	csrr	a1, mtval
 	csrr	a2, mcause

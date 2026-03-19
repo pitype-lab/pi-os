@@ -12,22 +12,25 @@ import Prelude.Extra.Num
 import Uart
 import VirtIO
 
--- A single C global pointer to a heap-allocated state page.
--- Layout at that page:
---   offset 0:  base address (Bits64)
+-- Set mscratch via ecall (traps into M-mode, fast path in trap.s)
+%foreign "C:make_syscall"
+prim__make_syscall : Bits64 -> PrimIO ()
+
+-- Read mscratch — only valid from M-mode (called from trap handler)
+%foreign "C:read_mscratch"
+prim__read_mscratch : PrimIO Bits64
+
+-- State page layout:
+--   offset 0:  virtio base address (Bits64)
 --   offset 8:  avail ring address (Bits64)
 --   offset 16: avail ring index (Bits16)
-%foreign "C:net_state_get_addr"
-prim__net_state_get_addr : PrimIO Bits64
-
-%foreign "C:net_state_set_addr"
-prim__net_state_set_addr : Bits64 -> PrimIO ()
 
 -- Handle a virtio-net interrupt: ack, recycle RX buffer, notify device
+-- Called from m_trap which runs in M-mode, so read_mscratch is valid.
 export
 handleNetIrq : IO ()
 handleNetIrq = do
-  stateAddr <- primIO prim__net_state_get_addr
+  stateAddr <- primIO prim__read_mscratch
   if stateAddr == 0
     then pure ()
     else do
@@ -129,7 +132,7 @@ setupNetwork addr = do
       primIO $ prim__set_bits64 (state + 8) avail
       primIO $ prim__set_bits16 (state + 16) 1
 
-      -- Register state page address in C global
-      primIO $ prim__net_state_set_addr state
+      -- Set mscratch to state page address via ecall into M-mode
+      primIO $ prim__make_syscall state
 
       println "Virtio network setup complete."
