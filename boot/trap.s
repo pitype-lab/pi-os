@@ -18,6 +18,9 @@ m_trap_vector:
 	csrr	a4, mstatus
 	call	m_trap
 
+	# m_trap returns new epc in a0 — write it back
+	csrw	mepc, a0
+
 	mret
 
 .global make_syscall
