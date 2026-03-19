@@ -1,62 +1,61 @@
 module Trap
 
 import Data.Bits
-import Data.C.Ptr
-import Data.C.Ptr.Extra
-import Data.Nat
 import Data.String.Extra
+import MMIO
+import System
 import Uart
-
-%foreign "C:exit"
-prim_exit : PrimIO ()
-
-export
-exit : IO ()
-exit = primIO prim_exit
-
-export
-panic : String -> IO ()
-panic msg = do
-  println msg
-  exit
-
 
 %export "urefc:Trap_m_trap"
 export
-m_trap : (epc : Nat) -> (tval : Nat) -> (cause : Bits64) -> (hart : Nat) -> (status : Nat) -> IO Nat
+m_trap : (epc : Bits64) -> (tval : Bits64) -> (cause : Bits64) -> (hart : Bits64) -> (status : Bits64) -> IO Bits64
 m_trap epc tval cause hart status = do
-  let cause_num = cast {to=Nat} $ (cast cause) .&. 0xfff
-  let in_async = ((shiftR cause 63) .&. 1) == 1
-  if in_async 
-     then inAsync $ cast cause_num
-     else notAsync $ cast cause_num
-  
+  let causeNum = cause .&. 0xfff
+  let isAsync = (shiftR cause 63 .&. 1) == 1
+  if isAsync
+     then handleAsync causeNum
+     else handleSync causeNum
+
   where
-    inAsync : Nat -> IO Nat
-    inAsync 7 = do
-      let mtimecmp = cast {to=AnyPtr} $ the Bits64 0x02004000 
-      let mtime = cast {to=AnyPtr} $ the Bits64 0x0200bff8
-      mtime_val <- deref {a=Bits64} mtime
-      setPtr mtimecmp (mtime_val + 10000000)
+    handleAsync : Bits64 -> IO Bits64
+    handleAsync 7 = do
+      mtimeVal <- read_mmio_bits64 ClintMtime
+      write_mmio_bits64 ClintMtimecmp (mtimeVal + 10000000)
       pure epc
-    inAsync cause_num = do
-      panic $ "Unhandled async trap CPU#" ++ show hart ++ " -> " ++ show cause_num
+    handleAsync n = do
+      panic $ "Unhandled async trap CPU#" ++ show hart ++ " -> " ++ show n
       pure epc
 
-    notAsync : Nat -> IO Nat
-    notAsync 2 = do
-      panic $ "Illegal instruction CPU#" ++ show hart ++  " -> 0x" ++ b64ToHexString (cast epc) ++ ": 0x" ++ b64ToHexString (cast tval)
+    handleSync : Bits64 -> IO Bits64
+    handleSync 2 = do
+      panic $ "Illegal instruction CPU#" ++ show hart
+           ++ " -> 0x" ++ b64ToHexString epc
+           ++ ": 0x" ++ b64ToHexString tval
       pure epc
-    notAsync 7 = do
-      println "m_trap"
-      let mtimecmp = cast {to=AnyPtr} $ the Bits64 0x02004000 
-      let mtime = cast {to=AnyPtr} $ the Bits64 0x0200bff8
-      mtime_val <- deref {a=Bits64} mtime
-      setPtr mtimecmp (mtime_val + 10000000)
+    handleSync 5 = do
+      panic $ "Load access fault CPU#" ++ show hart
+           ++ " -> 0x" ++ b64ToHexString epc
+           ++ ": 0x" ++ b64ToHexString tval
       pure epc
-    notAsync 15 = do
-      panic $ "Store page fault CPU#" ++ show hart ++ " -> 0x" ++ b64ToHexString (cast epc) ++ ": 0x" ++ b64ToHexString (cast tval) 
+    handleSync 7 = do
+      mtimeVal <- read_mmio_bits64 ClintMtime
+      write_mmio_bits64 ClintMtimecmp (mtimeVal + 10000000)
       pure epc
-    notAsync cause_num = do
-      panic $ "Unhandled sys trap CPU#" ++ show hart ++ " -> " ++ show cause_num
+    handleSync 12 = do
+      panic $ "Instruction page fault CPU#" ++ show hart
+           ++ " -> 0x" ++ b64ToHexString epc
+           ++ ": 0x" ++ b64ToHexString tval
+      pure epc
+    handleSync 13 = do
+      panic $ "Load page fault CPU#" ++ show hart
+           ++ " -> 0x" ++ b64ToHexString epc
+           ++ ": 0x" ++ b64ToHexString tval
+      pure epc
+    handleSync 15 = do
+      panic $ "Store page fault CPU#" ++ show hart
+           ++ " -> 0x" ++ b64ToHexString epc
+           ++ ": 0x" ++ b64ToHexString tval
+      pure epc
+    handleSync n = do
+      panic $ "Unhandled sync trap CPU#" ++ show hart ++ " -> " ++ show n
       pure epc

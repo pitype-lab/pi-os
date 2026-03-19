@@ -22,57 +22,56 @@ _start:
 2:
 	la		sp, _stack_end
 
-	# Setting `mstatus` register:
-	# 0b01 << 11: Machine's previous protection mode is 2 (MPP=2).
-	li		t0, 0b11 << 11
-	csrw	mstatus, t0
-
-	# Do not allow interrupts while running kinit
+	# Do not allow interrupts while running in M-mode init
 	csrw	mie, zero
 
-	# Enable FPU: set FS field in mstatus to 0b01 (Initial) or 0b11 (Dirty)
-	csrr	t0, mstatus
-	li	t1, (1 << 13)        # FS = 0b01 (Initial)
-	or	t0, t0, t1
-	csrw mstatus, t0
+	# Enable FPU: set FS field in mstatus to 0b01 (Initial)
+	li		t0, (0b11 << 11) | (1 << 13)
+	csrw	mstatus, t0
 
-	# Machine's exception program counter (MEPC) is set to `kinit`.
-	la		t1, kinit
-	csrw	mepc, t1
+  # Call main directly in M-mode
+	jal		ra, main
 
-	la		ra, 2f
-	mret
-2:
-  # Now still in machine mode; a0 = SATP value
-  csrw    satp, a0
-  sfence.vma
+  # Should not return, but if it does, spin
+1:
+	wfi
+	j		1b
+
+# ---------------------------------------------------------------
+# enter_supervisor_mode(satp_value)
+#   a0 = SATP register value (mode | ASID | PPN)
+#
+# Called from Idris via FFI. Sets up SATP, PMP, trap vector,
+# then mret into S-mode. Returns to the caller's ra but now
+# running in S-mode with the MMU enabled.
+# ---------------------------------------------------------------
+.global enter_supervisor_mode
+.align 4
+enter_supervisor_mode:
+  # Set SATP and flush TLB
+	csrw	satp, a0
+	sfence.vma
 
   # Set PMP to allow full access
-	li t0, -1                # Max addressable memory
-	csrw pmpaddr0, t0        # Set PMP region 0 to cover all memory
-	li t0, 0xF               # R/W/X, TOR mode
-	csrw pmpcfg0, t0         # Enable full access
+	li		t0, -1
+	csrw	pmpaddr0, t0
+	li		t0, 0xF               # R/W/X, TOR mode
+	csrw	pmpcfg0, t0
 
   # Machine trap vector
 	la		t2, m_trap_vector
 	csrw	mtvec, t2
 
-	# Setting `mstatus` (supervisor status) register:
+  # Set mstatus: MPP=01 (S-mode), FS=01 (FPU), MPIE=1, SPIE=1
 	li		t0, (1 << 13) | (0b01 << 11) | (1 << 7) | (1 << 5)
 	csrw	mstatus, t0
-
-  # Entry point for S-mode
-	la		t1, 3f
-	csrw	mepc, t1
 
   # Enable machine interrupts (SOFT | TIMER | EXTERNAL)
 	li		t2, (1 << 1) | (1 << 5) | (1 << 9)
 	csrw	mie, t2
 
-	mret
-3:
-  jal     ra, main
-4:
-	wfi
-	j		4b
+  # Set mepc to our return address so mret jumps back to caller in S-mode
+	csrw	mepc, ra
 
+  # mret: drops to S-mode, jumps to mepc (= ra)
+	mret

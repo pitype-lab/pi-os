@@ -1,6 +1,17 @@
 module Prelude.Extra.Num
 
-export
-Fractional Bits64 where
-  (/) a b = cast {to=Bits64} $ (cast {to=Double} a) / (cast {to=Double} b)
+import public Data.Nat
+import public Data.So
+import public Data.DPair
 
+export
+toDouble : Cast from Double => from -> Double
+toDouble = cast
+
+public export
+NatPos : Type
+NatPos = Subset Nat (\n => GT n 0)
+
+public export
+mkNatPos : (n : Nat) -> {auto ok : So (n > 0)} -> NatPos
+mkNatPos (S k) = Element (S k) (LTESucc LTEZero)

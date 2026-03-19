@@ -1,17 +1,14 @@
 module Uart
 
-import Data.C.Ptr
-
-UART : AnyPtr
-UART = prim__inc_ptr prim__getNullAnyPtr  0x10000000 1
+import MMIO
 
 export
-println: String -> IO ()
+println : HasIO io =>  String -> io ()
 println xs = println' (unpack xs)
-  where 
-    println': List Char -> IO ()
-    println' [] = setPtr UART $ cast {to=Bits8} '\n'
+  where
+    println' : List Char -> io ()
+    println' [] = write_mmio_bits8 UART $ cast '\n'
     println' (x :: xs) = do
-      setPtr UART $ cast {to=Bits8} x
+      write_mmio_bits8 UART $ cast x
       println' xs
 

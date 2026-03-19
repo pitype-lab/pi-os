@@ -1,307 +1,345 @@
 module Pages
 
-import Data.C.Ptr
-import Data.C.Ptr.Extra
 import Data.Bits
+import Data.C.Extra
+import Data.C.Ptr
+import Data.C.Array8
+import Data.C.Array8.Utils
+import Data.Linear.ELift1
 import Data.List
-import Data.IORef
-import Data.Vect
+import Heap
+import Kernel
 import Prelude.Extra.Num
-
-import Debug
+import Data.So
+import public Data.Linear.Token
+import Data.Nat
+import Data.Array.Index
+import Syntax.T1
 import Uart
-import Trap
-
-%foreign "C:idris2_heap_start"
-heapStart: Bits64
-
-%foreign "C:idris2_heap_size"
-heapSize: Bits64
 
 export
 pageSize: Bits64
-pageSize = 4096
+pageSize = 1 `shiftL` 12
+
+pageOrder : Fin 64
+pageOrder = 12
 
 export
-numPages : Bits64
-numPages = heapSize / pageSize
+numPages : Nat
+numPages = cast $ toDouble heapSize / toDouble pageSize
+
+alignVal : Bits64 -> Fin 64 -> Bits64
+alignVal val order = 
+  let o = 1  `shiftL` order
+      mask = o - 1
+  in (val + mask) .&. complement mask
+
+allocStart : Bits64
+allocStart = alignVal heapStart pageOrder
+
+export
+record PageBits where
+  constructor MkPageBits
+  Empty : Bits8
+  Taken : Bits8
+  Last : Bits8
+
+pageBits : PageBits
+pageBits = MkPageBits {
+  Empty = 0,
+  Taken = 1 `shiftL` 0,
+  Last = 1 `shiftL` 1
+}
+
+-- MMU Entry Bits
+public export
+record EntryBits where
+  constructor MkEntryBits
+  Valid : Bits64
+  Read : Bits64
+  Write : Bits64
+  Execute : Bits64
+  User : Bits64
+  Global : Bits64
+  Access : Bits64
+  Dirty : Bits64
+
+  ReadWrite : Bits64
+  ReadExecute : Bits64
+  ReadWriteExecute : Bits64
+
+  UserReadWrite : Bits64
+  UserReadExecute : Bits64
+  UserReadWriteExecute : Bits64
+
+export
+entryBits : EntryBits
+entryBits = MkEntryBits {
+  Valid              = shiftL 1 0,
+  Read               = shiftL 1 1,
+  Write              = shiftL 1 2,
+  Execute            = shiftL 1 3,
+  User               = shiftL 1 4,
+  Global             = shiftL 1 5,
+  Access             = shiftL 1 6,
+  Dirty              = shiftL 1 7,
+
+  ReadWrite          = shiftL 1 1 .|. shiftL 1 2,
+  ReadExecute        = shiftL 1 1 .|. shiftL 1 3,
+  ReadWriteExecute   = shiftL 1 1 .|. shiftL 1 2 .|. shiftL 1 3,
+
+  UserReadWrite         = shiftL 1 1 .|. shiftL 1 2 .|. shiftL 1 4,
+  UserReadExecute       = shiftL 1 1 .|. shiftL 1 3 .|. shiftL 1 4,
+  UserReadWriteExecute  = shiftL 1 1 .|. shiftL 1 2 .|. shiftL 1 3 .|. shiftL 1 4
+}
 
 public export
-data PageBits = Empty | Taken | Last
+data AllocPagesErrors = NoMemory | HeapOutOfBounds
 
 export
-Show PageBits where
-  show Empty = "Empty"
-  show Taken = "Taken"
-  show Last = "Last"
+Show AllocPagesErrors where
+  show NoMemory = "Empty"
+  show HeapOutOfBounds = "HeapOutOfBounds"
 
 export
-alloc : IORef (List PageBits) -> Nat -> IO AnyPtr
-alloc ref Z = do
-  println "Cannot allocate size of 0"
-  exit
-  pure $ cast heapStart
-alloc ref (S size) = do
-  pages <- readIORef ref
-  case getFirstFreeSpace pages [] 0 of
-       Nothing => do
-        println "No memory available"
-        exit
-        pure $ cast heapStart
-       Just (pages, location) => do
-         writeIORef ref pages
-         let align : AnyPtr = cast $ heapStart + ((shiftL 1 12) - 1) .&. (complement ((shiftL 1 12) - 1))
-         pure $ prim__inc_ptr align (cast pageSize) (cast location)
-
-  where
-    isFree : List PageBits -> Nat -> Bool
-    isFree (Empty::xs) Z = True
-    isFree (Empty::xs) (S n) = isFree xs n
-    isFree _ _= False
-
-    getFirstFreeSpace :
-         (pages : List PageBits)
-      -> (res : List PageBits) 
-      -> (location : Nat) 
-      -> Maybe (List PageBits, Nat)
-    getFirstFreeSpace [] _ _ = Nothing
-    getFirstFreeSpace (x::xs) res location = 
-      if isFree (x::xs) size
-         then Just (reverse res ++ replicate size Taken ++ Last::drop size xs, location)
-         else getFirstFreeSpace xs (x::res) (location+1)
+initPageTable : IO (numPages ** CArray8IO numPages)
+initPageTable = do
+  arr <- runIO $ T1.do
+    arr <- malloc1 numPages
+    memset1 arr numPages pageBits.Empty
+    pure arr
+  pure (numPages ** arr)
 
 export
-dealloc : IORef (List PageBits) -> AnyPtr -> IO ()
-dealloc ref ptr = do
-  let ptrAddr : Bits64 = cast ptr
-  let pageNum : Nat = cast $ ptrAddr - (heapStart / pageSize)
-  println $ "NumPage : " ++ show pageNum
-  pages <- readIORef ref
-  free (drop pageNum pages) [] >>= \p => writeIORef ref (take pageNum pages ++ p)
-
-  where
-    free : List PageBits -> List PageBits -> IO (List PageBits)
-    free [] _ = do
-      println "Couldn't free"
-      exit
-      pure []
-    free (Last::ps) res = pure $ res ++ (Empty::ps) 
-    free (p::ps) rest = free ps (Empty::rest)
-
-export
-zalloc : IORef (List PageBits) -> Nat -> IO AnyPtr
-zalloc ref size = do
-  ptr <- alloc ref size
-  let pageSize : Nat = cast pageSize
-  zeroPages ptr $ cast ((cast {to=Double} (size*pageSize))/8)
-  pure ptr
-
-  where
-    zeroPages : AnyPtr -> Nat -> IO ()
-    zeroPages ptr Z = setPtr ptr $ the Bits64 0
-    zeroPages ptr (S n) = do
-       setPtr ptr $ the Bits64 0
-       zeroPages (prim__inc_ptr ptr (sizeof Bits64) 1) n
-
-
-export
-savePages : AnyPtr -> IORef (List PageBits) -> IO ()
-savePages root ref = do
-  pages <- readIORef ref
-  save pages 0
+alloc : {numPages : Nat} -> (size : NatPos) -> (0 _ : LT (fst size) numPages) => Kernel numPages (Either AllocPagesErrors HeapAddr)
+alloc (Element(S last) _) = do
+  let size = S (last)
+  pageTable <- ask
+  res <- runIO $ withIArray pageTable $ \iPageTable => 
+    getFirstFreeSpace @{rewrite plusZeroRightNeutral last in %search} iPageTable 0 last
+  case res of
+    Just location => 
+      case isLT (last + location) numPages of
+        Yes prfK => do
+          let addr = allocStart + cast location * pageSize
+          case mkHeapAddr addr of
+               Just heapAddr => do
+                 runIO $ T1.do
+                   markTaken @{prfK} pageTable location last
+                   setNat pageTable (last + location) pageBits.Last
+                 pure (Right heapAddr)
+               Nothing => pure (Left HeapOutOfBounds)
+        No _ => pure (Left HeapOutOfBounds)
+    Nothing => pure (Left NoMemory)
 
   where 
-    save : List PageBits -> Bits32 -> IO ()
-    save [] n = pure ()
-    save (Empty::xs) n = do
-      setPtr (prim__inc_ptr root (sizeof Bits8) n) $ cast {to=Bits8} 0
-      save xs (n+1)
-    save (Taken::xs) n = do
-      setPtr (prim__inc_ptr root (sizeof Bits8) (cast n)) $ cast {to=Bits8} 1
-      save xs (n+1)
-    save (Last::xs) n =  do
-      setPtr (prim__inc_ptr root (sizeof Bits8) (cast n)) $ cast {to=Bits8} 2
-      save xs (n+1)
+    isFree : (pageTable : CIArray8 numPages) 
+          -> (location : Nat) 
+          -> (size : Nat) 
+          -> (0 _ : LT (size + location) numPages) 
+          => Bool
+    isFree pageTable location Z = 
+      atNat pageTable location == pageBits.Empty
+    isFree @{prf} pageTable location (S k) =
+      if atNat pageTable (S k + location) == pageBits.Empty
+        then isFree @{lteSuccLeft prf} pageTable location k
+        else False
 
+    markTaken : (pageTable : CArray8IO numPages)
+          -> (location : Nat)
+          -> (size : Nat)
+          -> (0 _ : LT (size + location) numPages)
+          => F1' World
+    markTaken pageTable location Z = 
+      setNat pageTable location pageBits.Taken
+    markTaken @{prf} pageTable location (S k) = T1.do
+      setNat pageTable (S k + location) pageBits.Taken
+      markTaken @{lteSuccLeft prf} pageTable location k
 
-export
-getPages :  IO (IORef (List PageBits))
-getPages = do
-  pages <- read $ cast numPages
-  newIORef (reverse pages)
-
-  where
-    read : Nat -> IO (List PageBits)
-    read Z = pure []
-    read (S n) = do
-      let align : AnyPtr  = cast $ heapStart  + ((shiftL 1 12) - 1) .&. (complement ((shiftL 1 12) - 1))
-      let ptr = prim__inc_ptr align (sizeof Bits8) (cast n)
-      val : Bits8 <- deref ptr
-      case val of
-        1 => do
-          xs <- read n
-          pure (Taken::xs)
-        2 => do
-          xs <- read n
-          pure (Last::xs)
-        _ => do
-          xs <- read n
-          pure (Empty::xs)
-
-public export
-data EntryBits = 
-    None 
-  | Valid 
-  | Read 
-  | Write 
-  | Execute 
-  | User 
-  | Global
-  | Access
-  | Dirty
-
-  -- Convenience combinations
-  | ReadWrite
-  | ReadExecute
-  | ReadWriteExecute
-
-  -- User Convenience Combinations
-  | UserReadWrite
-  | UserReadExecute
-  | UserReadWriteExecute
-
-implementation Cast EntryBits Bits64 where
-  cast None = 0
-  cast Valid = shiftL 1 0
-  cast Read = shiftL 1 1
-  cast Write = shiftL 1 2
-  cast Execute = shiftL 1 3
-  cast User = shiftL 1 4
-  cast Global = shiftL 1 5
-  cast Access = shiftL 1 6
-  cast Dirty = shiftL 1 7
-
-  -- Convenience combinations
-  cast ReadWrite = (shiftL 1 1) .|. (shiftL 1 2)
-  cast ReadExecute = (shiftL 1 1) .|. (shiftL 1 3)
-  cast ReadWriteExecute = (shiftL 1 1) .|. (shiftL 1 2) .|. (shiftL 1 3) 
-
-  -- Convenience combinations
-  cast UserReadWrite = (shiftL 1 1) .|. (shiftL 1 2) .|. (shiftL 1 4) 
-  cast UserReadExecute = (shiftL 1 1) .|. (shiftL 1 3) .|. (shiftL 1 4) 
-  cast UserReadWriteExecute = (shiftL 1 1) .|. (shiftL 1 2) .|. (shiftL 1 3) .|. (shiftL 1 4) 
-
+    getFirstFreeSpace : (pageTable : CIArray8 numPages) 
+          -> (location : Nat) 
+          -> (size : Nat) 
+          -> (0 _ : LT (size + location) numPages) 
+          => Maybe Nat
+    getFirstFreeSpace pageTable location size =
+      if isFree pageTable location size
+        then Just location
+        else case isLT (size + S location) numPages of
+               Yes prf => getFirstFreeSpace @{prf} pageTable (S location) size
+               No _    => Nothing
 
 export
-map : 
-     IORef (List PageBits)
-  -> (root : AnyPtr)
-  -> (vaddr : Nat) 
-  -> (paddr : Nat)
-  -> (bits: EntryBits)
-  -> IO ()
-map pagesRef root vaddr paddr bits = do
-    let vpn : Vect 3 Bits64 = [
-          shiftR (cast vaddr) 12 .&. 0x1ff,
-          shiftR (cast vaddr) 21 .&. 0x1ff,
-          shiftR (cast vaddr) 30 .&. 0x1ff]
-    let ppn : Vect 3 Bits64 = [
-          shiftR (cast paddr) 12 .&. 0x1ff,
-          shiftR (cast paddr) 21 .&. 0x1ff,
-          shiftR (cast paddr) 30 .&. 0x3ffffff]
-    let v =  prim__inc_ptr root (sizeof Bits64) (cast $ (index 2 vpn))
-    val <- deref {a=Bits64} v
-    leaf <- traversePageTable vpn 1 v
-    let entry : Bits64 =
-      shiftL (index 2 ppn) 28 .|.
-      shiftL (index 1 ppn) 19 .|.
-      shiftL (index 0 ppn) 10 .|. 
-      cast bits .|. 
-      cast Valid .|.
-      cast Dirty
-    setPtr leaf entry
-
-    where
-      traversePageTable : (vpn : Vect 3 Bits64) -> (level : Fin 3) ->  (v : AnyPtr) -> IO AnyPtr
-      traversePageTable vpn level v = do
-          val <- deref {a=Bits64} v
-          when ((val .&. (cast {to=Bits64} Valid)) == 0) $ do
-            page <- zalloc pagesRef 1
-            setPtr v $ ((shiftR (cast {to=Bits64} page)) 2) .|. (cast {to=Bits64} Valid)
-          val <- deref {a=Bits64} v
-          let nextTableAddr = shiftL (val .&. complement 0x3ff) 2
-          let nextTablePtr : AnyPtr =  cast nextTableAddr
-          let entryPtr = prim__inc_ptr nextTablePtr (sizeof Bits64) (cast $ (index level vpn))
-
-          if level > 0
-            then traversePageTable vpn (level-1) entryPtr
-            else pure entryPtr
+zalloc : {numPages : Nat} -> (size : NatPos) -> (0 _ : LT (fst size) numPages) => Kernel numPages (Either AllocPagesErrors HeapAddr)
+zalloc size = do
+  res <- alloc size
+  case res of
+    Right heapAddr => do
+      let byteCount = cast (fst size) * pageSize
+      liftIO $ zero_heap heapAddr byteCount
+      pure (Right heapAddr)
+    Left err => pure (Left err)
 
 export
-virt_to_phys : AnyPtr -> (vaddr : Nat) -> IO (Maybe Bits64)
-virt_to_phys root vaddr = do
-  let vpn : Vect 3 Bits64 = [
-        shiftR (cast vaddr) 12 .&. 0x1ff,  -- VPN[0]
-        shiftR (cast vaddr) 21 .&. 0x1ff,  -- VPN[1]
-        shiftR (cast vaddr) 30 .&. 0x1ff   -- VPN[2]
-      ]
-  let pageOffset = cast vaddr .&. 0xfff  -- Lower 12 bits
-
-  -- Level 2 (root level)
-  entryPtr2 <- pure $ prim__inc_ptr root (sizeof Bits64) (cast (index 2 vpn ))
-  entry2 <- deref {a=Bits64} entryPtr2
-  if entry2 .&. cast Valid == 0 then pure Nothing else do
-    let tableAddr1 = shiftL (entry2 .&. complement 0x3ff) 2
-    let tablePtr1 : AnyPtr = cast tableAddr1
-
-    -- Level 1
-    entryPtr1 <- pure $ prim__inc_ptr tablePtr1 (sizeof Bits64) (cast (index 1 vpn))
-    entry1 <- deref {a=Bits64} entryPtr1
-    if entry1 .&. cast Valid == 0 then pure Nothing else do
-      let tableAddr0 = shiftL (entry1 .&. complement 0x3ff) 2
-      let tablePtr0 : AnyPtr = cast tableAddr0
-
-      -- Level 0
-      entryPtr0 <- pure $ prim__inc_ptr tablePtr0 (sizeof Bits64) (cast (index 0 vpn * 8))
-      entry0 : Bits64 <- deref entryPtr0
-      if entry0 .&. cast Valid == 0 then pure Nothing else do
-        -- Check if it's a leaf (has RWX bits set)
-        if (entry0 .&. 0xe) == 0 then pure Nothing else do
-          let ppn0 = (entry0 `shiftR` 10) .&. 0x1ff
-          let ppn1 = (entry0 `shiftR` 19) .&. 0x1ff
-          let ppn2 = (entry0 `shiftR` 28) .&. 0x3ffffff
-          let paddr =
-                shiftL ppn2 30 .|.
-                shiftL ppn1 21 .|.
-                shiftL ppn0 12 .|.
-                pageOffset
-          pure (Just paddr)
-
-export
-id_map_range : 
-     IORef (List PageBits)
-  -> (root : AnyPtr)
-  -> (start : Nat) 
-  -> (end : Nat)
-  -> (bits: EntryBits)
-  -> IO ()
-id_map_range pagesRef root start end bits = do
-  let memaddr = (cast {to=Bits64} start) .&. (complement ((cast {to=Bits64} pageSize)-1))
-  let alignEnd = ((cast {to=Bits64} end) + ((shiftL 1 12) - 1)) .&. (complement ((shiftL 1 12) - 1)) 
-  let numKbPages = cast {to=Nat} $ (cast {to=Double} $ (cast {to=Bits64} alignEnd) - memaddr) / (cast {to=Double} pageSize)
-  map_addr numKbPages (cast {to=Nat} memaddr)
+dealloc : {numPages : Nat} -> HeapAddr -> Kernel numPages ()
+dealloc heapAddr = do
+  let addr = getHeapAddr heapAddr
+      location : Nat = cast $ toDouble (addr - allocStart) / toDouble pageSize
+  println $ show location
+  pageTable <- ask 
+  case isLT location numPages of
+    Yes prf => runIO $ free pageTable (natToFinLT location)
+    No _    => pure ()
 
   where 
-    map_addr : (numKbPages : Nat) -> (memaddr : Nat) -> IO ()
-    map_addr Z _ = pure ()
-    map_addr (S numKbPages) memaddr =
-      map pagesRef root memaddr memaddr bits >> map_addr numKbPages (memaddr + 4096)
+    free : (pageTable : CArray8IO numPages) -> (index : Fin numPages) -> F1' World
+    free pageTable i = T1.do
+      page <- get pageTable i
+      if page /= pageBits.Last
+         then T1.do
+           set pageTable i pageBits.Empty
+           let next = S (finToNat i)
+           case isLT next numPages of
+             Yes prf => free pageTable (natToFinLT next)
+             No _    => pure ()
+         else
+           set pageTable i pageBits.Empty
 
+export
+mmap : {numPages : Nat}
+    -> (root : HeapAddr)
+    -> (vaddr : Bits64)
+    -> (paddr : Bits64)
+    -> (bits : Bits64)
+    -> Kernel numPages (Either AllocPagesErrors ())
+mmap root vaddr paddr bits = do
+    let vpn2 = shiftR vaddr 30 .&. 0x1ff
+        vpn1 = shiftR vaddr 21 .&. 0x1ff
+        vpn0 = shiftR vaddr 12 .&. 0x1ff
 
+        ppn2 = shiftR paddr 30 .&. 0x3ffffff
+        ppn1 = shiftR paddr 21 .&. 0x1ff
+        ppn0 = shiftR paddr 12 .&. 0x1ff
 
+    case mkHeapAddr (getHeapAddr root + vpn2 * 8) of
+      Nothing => pure (Left HeapOutOfBounds)
+      Just entryPtr2 => do
+        res <- traverseLevel entryPtr2 vpn1
+        case res of
+          Left err => pure (Left err)
+          Right entryPtr1 => do
+            res <- traverseLevel entryPtr1 vpn0
+            case res of
+              Left err => pure (Left err)
+              Right entryPtr0 => do
+                let entry =
+                      shiftL ppn2 28 .|.
+                      shiftL ppn1 19 .|.
+                      shiftL ppn0 10 .|.
+                      bits .|.
+                      entryBits.Valid .|.
+                      entryBits.Dirty .|.
+                      entryBits.Access
+                write_heap_bits64 entryPtr0 entry
+                pure (Right ())
 
+  where
+    traverseLevel : HeapAddr -> Bits64 -> Kernel numPages (Either AllocPagesErrors HeapAddr)
+    traverseLevel entryAddr vpn = do
+      val <- read_heap_bits64 entryAddr
+      when ((val .&. entryBits.Valid) == 0) $ do
+        case isLT 1 numPages of
+          Yes prf => do
+            res <- zalloc @{prf} (mkNatPos 1)
+            case res of
+              Right page =>
+                write_heap_bits64 entryAddr (shiftR (getHeapAddr page) 2 .|. entryBits.Valid)
+              Left _ => pure ()
+          No _ => pure ()
+      val <- liftIO $ read_heap_bits64 entryAddr
+      if (val .&. entryBits.Valid) == 0
+        then pure (Left NoMemory)
+        else do
+          let nextTable = shiftL (val .&. complement 0x3ff) 2
+          case mkHeapAddr (nextTable + vpn * 8) of
+            Nothing => pure (Left HeapOutOfBounds)
+            Just addr => pure (Right addr)
 
+export
+idMapRange : {numPages : Nat}
+          -> (root : HeapAddr)
+          -> (start : Bits64)
+          -> (end : Bits64)
+          -> (bits : Bits64)
+          -> Kernel numPages (Either AllocPagesErrors ())
+idMapRange root start end bits = do
+    let memaddr = start .&. complement (pageSize - 1)
+        alignEnd = (end + pageSize - 1) .&. complement (pageSize - 1)
+    mapPages memaddr alignEnd
 
+  where
+    -- Resolve a level: read entry, allocate page if not valid, return next table base
+    resolveLevel : HeapAddr -> Kernel numPages (Either AllocPagesErrors Bits64)
+    resolveLevel entryAddr = do
+      val <- read_heap_bits64 entryAddr
+      when ((val .&. entryBits.Valid) == 0) $ do
+        case isLT 1 numPages of
+          Yes prf => do
+            res <- zalloc @{prf} (mkNatPos 1)
+            case res of
+              Right page =>
+                write_heap_bits64 entryAddr (shiftR (getHeapAddr page) 2 .|. entryBits.Valid)
+              Left _ => pure ()
+          No _ => pure ()
+      val <- read_heap_bits64 entryAddr
+      if (val .&. entryBits.Valid) == 0
+        then pure (Left NoMemory)
+        else pure (Right (shiftL (val .&. complement 0x3ff) 2))
 
+    -- Fill level-0 entries within a single level-1 slot (same 2MB region).
+    -- entryBase has PPN[2], PPN[1], flags precomputed — only PPN[0] varies.
+    -- l1Base is the raw base address of the L0 table (already validated).
+    -- vpn0 is the starting VPN[0] index, count is how many entries to fill.
+    fillL0 : (l1Base : Bits64) -> (entryBase : Bits64) -> (vpn0 : Bits64) -> (count : Bits64) -> Kernel numPages ()
+    fillL0 l1Base entryBase vpn0 count = do
+      if count == 0
+        then pure ()
+        else do
+          primIO $ prim__set_bits64 (l1Base + vpn0 * 8) (entryBase .|. shiftL vpn0 10)
+          fillL0 l1Base entryBase (vpn0 + 1) (count - 1)
+
+    -- Iterate over 2MB regions: resolve level-2 and level-1 once, then batch level-0
+    mapPages : Bits64 -> Bits64 -> Kernel numPages (Either AllocPagesErrors ())
+    mapPages addr alignEnd = do
+      if addr >= alignEnd
+        then pure (Right ())
+        else do
+          let vpn2 = shiftR addr 30 .&. 0x1ff
+              vpn1 = shiftR addr 21 .&. 0x1ff
+              vpn0Start = shiftR addr 12 .&. 0x1ff
+              -- How many pages until end of this 2MB region or end of range
+              next2MB = (addr + 0x200000) .&. complement (0x200000 - 1)
+              regionEnd = if next2MB < alignEnd then next2MB else alignEnd
+              count = shiftR (regionEnd - addr) 12
+              -- Precompute entry bits: PPN[2], PPN[1], flags are constant within 2MB
+              ppn2 = shiftR addr 30 .&. 0x3ffffff
+              ppn1 = shiftR addr 21 .&. 0x1ff
+              entryBase = shiftL ppn2 28 .|.
+                          shiftL ppn1 19 .|.
+                          bits .|.
+                          entryBits.Valid .|.
+                          entryBits.Dirty .|.
+                          entryBits.Access
+          case mkHeapAddr (getHeapAddr root + vpn2 * 8) of
+            Nothing => pure (Left HeapOutOfBounds)
+            Just entryPtr2 => do
+              Right l2Base <- resolveLevel entryPtr2
+                | Left err => pure (Left err)
+              case mkHeapAddr (l2Base + vpn1 * 8) of
+                Nothing => pure (Left HeapOutOfBounds)
+                Just entryPtr1 => do
+                  Right l1Base <- resolveLevel entryPtr1
+                    | Left err => pure (Left err)
+                  fillL0 l1Base entryBase vpn0Start count
+                  mapPages regionEnd alignEnd
 
 
