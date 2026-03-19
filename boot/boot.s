@@ -66,8 +66,8 @@ enter_supervisor_mode:
 	li		t0, (1 << 13) | (0b01 << 11) | (1 << 7) | (1 << 5)
 	csrw	mstatus, t0
 
-  # Enable machine interrupts (SOFT | TIMER | EXTERNAL)
-	li		t2, (1 << 1) | (1 << 5) | (1 << 9)
+  # Enable M-mode external interrupts only (MEIE)
+	li		t2, (1 << 11)
 	csrw	mie, t2
 
   # Set mepc to our return address so mret jumps back to caller in S-mode

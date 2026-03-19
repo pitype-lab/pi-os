@@ -23,3 +23,11 @@ set_priority id prio = do
   let actual_prio = cast {to=Bits32} prio .&. 7
       addr = mmioAddr PlicPriority + cast id * 4
   primIO $ prim__set_bits32 addr actual_prio
+
+export
+claim : HasIO io => io Bits32
+claim = read_mmio_bits32 PlicClaim
+
+export
+complete : HasIO io => Bits32 -> io ()
+complete irq = write_mmio_bits32 PlicClaim irq

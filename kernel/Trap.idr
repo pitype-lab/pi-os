@@ -3,6 +3,7 @@ module Trap
 import Data.Bits
 import Data.String.Extra
 import MMIO
+import Plic
 import System
 import Uart
 
@@ -21,6 +22,11 @@ m_trap epc tval cause hart status = do
     handleAsync 7 = do
       mtimeVal <- read_mmio_bits64 ClintMtime
       write_mmio_bits64 ClintMtimecmp (mtimeVal + 10000000)
+      pure epc
+    handleAsync 11 = do
+      irq <- claim
+      println "Welcome to the trap function"
+      complete irq
       pure epc
     handleAsync n = do
       panic $ "Unhandled async trap CPU#" ++ show hart ++ " -> " ++ show n
