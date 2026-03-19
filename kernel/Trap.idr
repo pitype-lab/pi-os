@@ -3,6 +3,7 @@ module Trap
 import Data.Bits
 import Data.String.Extra
 import MMIO
+import Net
 import Plic
 import System
 import Uart
@@ -26,6 +27,7 @@ m_trap epc tval cause hart status = do
     handleAsync 11 = do
       irq <- claim
       println "Welcome to the trap function"
+      handleNetIrq
       complete irq
       pure epc
     handleAsync n = do
