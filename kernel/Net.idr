@@ -41,7 +41,8 @@ prim__read_mscratch : PrimIO Bits64
 --   offset 90:  _pad (2 bytes)
 --   offset 92:  peer_ip              (Bits32)
 --   offset 96:  peer_mac             (6 bytes)
---   offset 102: _pad (2 bytes)
+--   offset 102: _pad (1 byte)
+--   offset 103: conn_active          (Bits8, 0=idle, 1=active)
 
 ------------------------------------------------------------------------
 -- Byte-order helpers
@@ -448,40 +449,47 @@ handleTcp stateAddr base ipStart tcpStart = do
   when (dstPort == 80) $ do
     let isSyn = flags .&. 0x02
         isAck = flags .&. 0x10
-        isPsh = flags .&. 0x08
     if (isSyn /= 0 && isAck == 0)
       then do
-        println "Net: TCP SYN received, sending SYN-ACK"
-        -- Save peer port
-        srcPort <- readBE16 tcpStart
-        primIO $ prim__set_bits16 (stateAddr + 88) srcPort
-        -- Save peer IP from IP header
-        peerIp <- readBE32 (ipStart + 12)
-        writeBE32 (stateAddr + 92) peerIp
-        -- Save peer MAC from state+96 (already set by ARP or from eth src)
-        -- peer_seq_next = seq + 1
-        seqNum <- readBE32 (tcpStart + 4)
-        primIO $ prim__set_bits32 (stateAddr + 84) (seqNum + 1)
-        sendSynAck stateAddr base
-        println "Net: SYN-ACK sent"
-      else if isPsh /= 0
-        then do
-          println "Net: TCP PSH received, printing payload"
-          -- Compute TCP header length from data offset nibble
-          dataOffByte <- primIO $ prim__deref_bits8 (tcpStart + 12)
-          let tcpHdrLen : Bits64 = cast ((dataOffByte `shiftR` 4) * 4)
-              payloadStart = tcpStart + tcpHdrLen
-          -- IP total length from IP header
-          ipTotalLen <- readBE16 (ipStart + 2)
-          let ipHdrLen : Bits64 = cast ((!(primIO $ prim__deref_bits8 ipStart) .&. 0x0F) * 4)
-              tcpSegLen : Bits64 = cast ipTotalLen - ipHdrLen
-              payloadLen = tcpSegLen - tcpHdrLen
-          println $ "Net: payloadLen=" ++ b64ToHexString payloadLen
-          when (payloadLen > 0) $ do
+        -- Check if a connection is already active; drop duplicate SYNs
+        connActive <- primIO $ prim__deref_bits8 (stateAddr + 103)
+        if connActive /= 0
+          then println "Net: TCP SYN ignored, connection already active"
+          else do
+            println "Net: TCP SYN received, sending SYN-ACK"
+            -- Mark connection as active
+            primIO $ prim__set_bits8 (stateAddr + 103) 1
+            -- Save peer port
+            srcPort <- readBE16 tcpStart
+            primIO $ prim__set_bits16 (stateAddr + 88) srcPort
+            -- Save peer IP from IP header
+            peerIp <- readBE32 (ipStart + 12)
+            writeBE32 (stateAddr + 92) peerIp
+            -- Save peer MAC from state+96 (already set by ARP or from eth src)
+            -- peer_seq_next = seq + 1
+            seqNum <- readBE32 (tcpStart + 4)
+            primIO $ prim__set_bits32 (stateAddr + 84) (seqNum + 1)
+            sendSynAck stateAddr base
+            println "Net: SYN-ACK sent"
+      else do
+        -- For any non-SYN segment, check if it carries a payload
+        dataOffByte <- primIO $ prim__deref_bits8 (tcpStart + 12)
+        let tcpHdrLen : Bits64 = cast ((dataOffByte `shiftR` 4) * 4)
+            payloadStart = tcpStart + tcpHdrLen
+        -- IP total length from IP header
+        ipTotalLen <- readBE16 (ipStart + 2)
+        let ipHdrLen : Bits64 = cast ((!(primIO $ prim__deref_bits8 ipStart) .&. 0x0F) * 4)
+            tcpSegLen : Bits64 = cast ipTotalLen - ipHdrLen
+            payloadLen = tcpSegLen - tcpHdrLen
+        if payloadLen > 0
+          then do
+            println $ "Net: TCP data received, payloadLen=" ++ b64ToHexString payloadLen
             printPayload payloadStart payloadLen
             sendHttpResponse stateAddr base payloadLen
-            println "Net: HTTP response sent"
-        else println $ "Net: TCP no-op flags=0x" ++ b64ToHexString (cast flags)
+            -- Connection done (response sent with FIN), mark idle
+            primIO $ prim__set_bits8 (stateAddr + 103) 0
+            println "Net: HTTP response sent, connection closed"
+          else println $ "Net: TCP ACK (no data) flags=0x" ++ b64ToHexString (cast flags)
 
 ------------------------------------------------------------------------
 -- IPv4 handling
@@ -535,35 +543,41 @@ handleNetIrq = do
       println $ "Net: IRQ isr=0x" ++ b64ToHexString (cast isr) ++ " status=0x" ++ b64ToHexString (cast status)
       primIO $ prim__set_bits32 (base + 0x64) isr
 
-      -- 2. Check if there's a used descriptor (used_idx at offset 2)
-      usedIdx <- primIO $ prim__deref_bits16 (rxUsed + 2)
-      lastUsed <- primIO $ prim__deref_bits16 (stateAddr + 18)
-      println $ "Net: idx=" ++ b64ToHexString (cast idx) ++ " usedIdx=" ++ b64ToHexString (cast usedIdx) ++ " lastUsed=" ++ b64ToHexString (cast lastUsed) ++ " rxUsed=0x" ++ b64ToHexString rxUsed
-      if usedIdx > lastUsed
-        then do
-          -- Read received packet length from used ring (used+8 = ring[0].len)
-          pktLen32 <- primIO $ prim__deref_bits32 (rxUsed + 8)
-          println $ "Net: pktLen=" ++ b64ToHexString (cast pktLen32)
-          when (pktLen32 > 10) $ do
-            let frameStart = rxBuf + 10           -- skip 10-byte VirtIO net header
-                frameLen   : Bits64 = cast pktLen32 - 10
-            println $ "Net: frameLen=" ++ b64ToHexString frameLen
-            when (frameLen > 14) $
-              dispatchFrame stateAddr base frameStart frameLen
+      -- 2. Drain all queued packets in a loop
+      let drainLoop : IO ()
+          drainLoop = do
+            usedIdx  <- primIO $ prim__deref_bits16 (rxUsed + 2)
+            lastUsed <- primIO $ prim__deref_bits16 (stateAddr + 18)
+            curIdx   <- primIO $ prim__deref_bits16 (stateAddr + 16)
+            println $ "Net: idx=" ++ b64ToHexString (cast curIdx) ++ " usedIdx=" ++ b64ToHexString (cast usedIdx) ++ " lastUsed=" ++ b64ToHexString (cast lastUsed) ++ " rxUsed=0x" ++ b64ToHexString rxUsed
+            if usedIdx > lastUsed
+              then do
+                -- Read received packet length from used ring (used+8 = ring[0].len)
+                pktLen32 <- primIO $ prim__deref_bits32 (rxUsed + 8)
+                println $ "Net: pktLen=" ++ b64ToHexString (cast pktLen32)
+                when (pktLen32 > 10) $ do
+                  let frameStart = rxBuf + 10           -- skip 10-byte VirtIO net header
+                      frameLen   : Bits64 = cast pktLen32 - 10
+                  println $ "Net: frameLen=" ++ b64ToHexString frameLen
+                  when (frameLen > 14) $
+                    dispatchFrame stateAddr base frameStart frameLen
 
-          -- 3. Update lastUsed index
-          primIO $ prim__set_bits16 (stateAddr + 18) usedIdx
+                -- 3. Update lastUsed index
+                primIO $ prim__set_bits16 (stateAddr + 18) usedIdx
 
-          -- 4. Re-arm: put descriptor 0 back in available ring
-          let newAvailIdx = idx + 1
-          primIO $ prim__set_bits16 (avail + 4) 0           -- ring[0] = descriptor 0
-          primIO $ prim__set_bits16 (avail + 2) newAvailIdx -- bump avail.idx
-          primIO $ prim__set_bits16 (stateAddr + 16) newAvailIdx
-          primIO $ prim__set_bits32 (base + 0x50) 0         -- notify queue 0
+                -- 4. Re-arm: put descriptor 0 back in available ring
+                let newAvailIdx = curIdx + 1
+                primIO $ prim__set_bits16 (avail + 4) 0           -- ring[0] = descriptor 0
+                primIO $ prim__set_bits16 (avail + 2) newAvailIdx -- bump avail.idx
+                primIO $ prim__set_bits16 (stateAddr + 16) newAvailIdx
+                primIO $ prim__set_bits32 (base + 0x50) 0         -- notify queue 0
 
-          println $ "Net: processed usedIdx=" ++ b64ToHexString (cast usedIdx)
-        else do
-          println "Net: no new used descriptor"
+                println $ "Net: processed usedIdx=" ++ b64ToHexString (cast usedIdx)
+                -- Loop to check for more queued packets
+                drainLoop
+              else do
+                println "Net: no new used descriptor"
+      drainLoop
 
 export
 pollNet : IO ()
