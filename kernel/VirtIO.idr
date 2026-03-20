@@ -1,12 +1,8 @@
 module VirtIO
 
 import Data.Bits
-import Data.C.Array8
 import Data.C.Extra
-import Heap
-import Kernel
 import MMIO
-import Pages
 import Uart
 
 MMIO_VIRTIO_STRIDE : Bits64
@@ -17,17 +13,17 @@ MMIO_VIRTIO_MAGIC : Bits32
 MMIO_VIRTIO_MAGIC = 0x74726976
 
 public export
-record InitVirtIO (numPages : Nat) where
+record InitVirtIO where
   constructor MkInitVirtIO
-  initNetwork : VirtIODevice -> Kernel numPages ()
+  initNetwork : VirtIODevice -> IO ()
 
 private
-setup : {numPages : Nat} -> Bits32 -> VirtIODevice -> InitVirtIO numPages -> Kernel numPages ()
+setup : Bits32 -> VirtIODevice -> InitVirtIO -> IO ()
 setup 1 dev init = init.initNetwork dev
 setup n _ _      = println $ "Virtio " ++ show n ++ " not implemented yet"
 
 private
-probeAddrs : {numPages : Nat} -> Bits64 -> InitVirtIO numPages -> Kernel numPages ()
+probeAddrs : Bits64 -> InitVirtIO -> IO ()
 probeAddrs addr initVirtIO =
   if addr > VIRTIO_MMIO_END
     then pure ()
@@ -48,5 +44,5 @@ probeAddrs addr initVirtIO =
       probeAddrs (addr + MMIO_VIRTIO_STRIDE) initVirtIO
 
 export
-probe : {numPages : Nat} -> InitVirtIO numPages -> Kernel numPages ()
+probe : InitVirtIO -> IO ()
 probe = probeAddrs VIRTIO_MMIO_START

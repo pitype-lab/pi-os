@@ -1,8 +1,10 @@
 module MMIO
 
+import Data.C.Array8
+import Data.C.Array8.Utils
 import Data.C.Extra
 import Data.So
-import public Heap
+import public Data.Linear.Token
 
 ------------------------------------------------------------------------
 -- Platform MMIO devices
@@ -161,6 +163,7 @@ writeVirtIO dev reg val =
   primIO $ prim__set_bits32 (getVirtIOAddr dev + virtioRegOffset reg) val
 
 -- MAC address in VirtIO config space (base + 0x100..0x105)
+%ambiguity_depth 6
 export
 readVirtIOMAC : HasIO io => VirtIODevice -> io (Bits8, Bits8, Bits8, Bits8, Bits8, Bits8)
 readVirtIOMAC dev = do
@@ -174,8 +177,29 @@ readVirtIOMAC dev = do
   pure (m0, m1, m2, m3, m4, m5)
 
 ------------------------------------------------------------------------
--- Net state page fields
+-- Net state page fields (accessed via CArray8)
 ------------------------------------------------------------------------
+
+-- State page layout (all fields stored in native little-endian byte order):
+--   Offset  Type    Field
+--   0       Bits64  VirtioBase
+--   8       Bits64  RxAvailAddr
+--   16      Bits16  RxAvailIdx
+--   18      Bits16  LastUsedIdx
+--   24      Bits64  RxUsedAddr
+--   32      Bits64  RxBufferAddr
+--   40      Bits64  TxDescAddr
+--   48      Bits64  TxAvailAddr
+--   56      Bits64  TxBufferAddr
+--   64      Bits16  TxAvailIdx
+--   72      6 bytes OurMac
+--   80      Bits32  OurSeq
+--   84      Bits32  PeerSeqNext
+--   88      Bits16  PeerPort
+--   92      Bits32  PeerIp (stored as LE, byte-swapped when writing to packet headers)
+--   96      6 bytes PeerMac
+--   104     Bits64  RxVqAddr
+--   112     Bits64  TxVqAddr
 
 public export
 data NetField : Type -> Type where
@@ -193,9 +217,11 @@ data NetField : Type -> Type where
   PeerSeqNext   : NetField Bits32   -- offset 84
   PeerPort      : NetField Bits16   -- offset 88
   PeerIp        : NetField Bits32   -- offset 92
+  RxVqAddr      : NetField Bits64   -- offset 104
+  TxVqAddr      : NetField Bits64   -- offset 112
 
-export
-netFieldOffset : NetField a -> Bits64
+public export
+netFieldOffset : NetField a -> Nat
 netFieldOffset VirtioBase    = 0
 netFieldOffset RxAvailAddr   = 8
 netFieldOffset RxAvailIdx    = 16
@@ -210,58 +236,61 @@ netFieldOffset OurSeq        = 80
 netFieldOffset PeerSeqNext   = 84
 netFieldOffset PeerPort      = 88
 netFieldOffset PeerIp        = 92
+netFieldOffset RxVqAddr      = 104
+netFieldOffset TxVqAddr      = 112
 
--- Read a net state field (from a HeapAddr-bounded state page)
+-- Read/write net state fields from a CArray8-backed state page.
+-- All fields use native little-endian byte order.
+-- We use the raw pointer for reads/writes since the LT proofs can't be
+-- forwarded generically from NetField. The array bounds are guaranteed
+-- by the caller (all arrays are 4096 bytes, max offset is 119).
+
 export
-readNetField : HasIO io => HeapAddr -> NetField Bits64 -> io Bits64
+readNetField : HasIO io => CArray8 World n -> NetField Bits64 -> io Bits64
 readNetField st fld =
-  primIO $ prim__deref_bits64 (getHeapAddr st + netFieldOffset fld)
+  primIO $ prim__deref_bits64 (anyPtrToBits64 (unsafeUnwrap st) + cast (netFieldOffset fld))
 
 export
-readNetField32 : HasIO io => HeapAddr -> NetField Bits32 -> io Bits32
-readNetField32 st fld =
-  primIO $ prim__deref_bits32 (getHeapAddr st + netFieldOffset fld)
-
-export
-readNetField16 : HasIO io => HeapAddr -> NetField Bits16 -> io Bits16
-readNetField16 st fld =
-  primIO $ prim__deref_bits16 (getHeapAddr st + netFieldOffset fld)
-
--- Write a net state field
-export
-writeNetField : HasIO io => HeapAddr -> NetField Bits64 -> Bits64 -> io ()
+writeNetField : HasIO io => CArray8 World n -> NetField Bits64 -> Bits64 -> io ()
 writeNetField st fld val =
-  primIO $ prim__set_bits64 (getHeapAddr st + netFieldOffset fld) val
+  primIO $ prim__set_bits64 (anyPtrToBits64 (unsafeUnwrap st) + cast (netFieldOffset fld)) val
 
 export
-writeNetField32 : HasIO io => HeapAddr -> NetField Bits32 -> Bits32 -> io ()
+readNetField32 : HasIO io => CArray8 World n -> NetField Bits32 -> io Bits32
+readNetField32 st fld =
+  primIO $ prim__deref_bits32 (anyPtrToBits64 (unsafeUnwrap st) + cast (netFieldOffset fld))
+
+export
+writeNetField32 : HasIO io => CArray8 World n -> NetField Bits32 -> Bits32 -> io ()
 writeNetField32 st fld val =
-  primIO $ prim__set_bits32 (getHeapAddr st + netFieldOffset fld) val
+  primIO $ prim__set_bits32 (anyPtrToBits64 (unsafeUnwrap st) + cast (netFieldOffset fld)) val
 
 export
-writeNetField16 : HasIO io => HeapAddr -> NetField Bits16 -> Bits16 -> io ()
+readNetField16 : HasIO io => CArray8 World n -> NetField Bits16 -> io Bits16
+readNetField16 st fld =
+  primIO $ prim__deref_bits16 (anyPtrToBits64 (unsafeUnwrap st) + cast (netFieldOffset fld))
+
+export
+writeNetField16 : HasIO io => CArray8 World n -> NetField Bits16 -> Bits16 -> io ()
 writeNetField16 st fld val =
-  primIO $ prim__set_bits16 (getHeapAddr st + netFieldOffset fld) val
+  primIO $ prim__set_bits16 (anyPtrToBits64 (unsafeUnwrap st) + cast (netFieldOffset fld)) val
 
 -- MAC fields: OurMac at offset 72, PeerMac at offset 96
--- These are 6-byte fields accessed via copyMac or individual byte writes
 
 public export
 data NetMacField = OurMac | PeerMac
 
-export
-netMacOffset : NetMacField -> Bits64
+public export
+netMacOffset : NetMacField -> Nat
 netMacOffset OurMac  = 72
 netMacOffset PeerMac = 96
 
+-- Write a 6-byte MAC address to the state page
 export
-netMacAddr : HeapAddr -> NetMacField -> Bits64
-netMacAddr st fld = getHeapAddr st + netMacOffset fld
-
-export
-writeNetMAC : HasIO io => HeapAddr -> NetMacField -> Bits8 -> Bits8 -> Bits8 -> Bits8 -> Bits8 -> Bits8 -> io ()
+writeNetMAC : HasIO io => CArray8 World n -> NetMacField
+           -> Bits8 -> Bits8 -> Bits8 -> Bits8 -> Bits8 -> Bits8 -> io ()
 writeNetMAC st fld m0 m1 m2 m3 m4 m5 = do
-  let base = getHeapAddr st + netMacOffset fld
+  let base = anyPtrToBits64 (unsafeUnwrap st) + cast (netMacOffset fld)
   primIO $ prim__set_bits8 base       m0
   primIO $ prim__set_bits8 (base + 1) m1
   primIO $ prim__set_bits8 (base + 2) m2

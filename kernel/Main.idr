@@ -80,13 +80,15 @@ kinit = do
 
       println "Running in S-mode"
 
+%logging "unify" 10
 kmain : {numPages : Nat} -> Kernel numPages ()
 kmain = do
   kinit
   Plic.set_threshold 0
   Plic.enable 8
   Plic.set_priority 8 1
-  probe (MkInitVirtIO setupNetwork)
+  liftIO $ probe (MkInitVirtIO setupNetwork)
+%logging off
 
 main : IO ()
 main = do
