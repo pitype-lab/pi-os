@@ -23,6 +23,22 @@ namespace HeapCon
   getHeapAddr : HeapAddr -> Bits64
   getHeapAddr (MkHeapAddr addr prf) = addr
 
+  export
+  offsetHeapAddr : HeapAddr -> Bits64 -> Maybe HeapAddr
+  offsetHeapAddr base off = mkHeapAddr (getHeapAddr base + off)
+
+export
+read_heap_bits8 : HasIO io => HeapAddr -> io Bits8
+read_heap_bits8 addr = primIO $ prim__deref_bits8 (getHeapAddr addr)
+
+export
+read_heap_bits16 : HasIO io => HeapAddr -> io Bits16
+read_heap_bits16 addr = primIO $ prim__deref_bits16 (getHeapAddr addr)
+
+export
+read_heap_bits32 : HasIO io => HeapAddr -> io Bits32
+read_heap_bits32 addr = primIO $ prim__deref_bits32 (getHeapAddr addr)
+
 export
 read_heap_bits64 : HasIO io => HeapAddr -> io Bits64
 read_heap_bits64 addr = primIO $ prim__deref_bits64 (getHeapAddr addr)
